@@ -18,16 +18,18 @@ type Item = {
   attackInterval?: number
   moveSpeed?: number
   blockCount?: number
+  splashRadius?: number
 }
 type BuildingModal = { id: string; item: Item }
 type Production = { item: Item; remaining: number }
 type EmergencyAction = { id: 'flare' | 'shockwave' | 'medkit'; nonce: number } | null
-type UnitPriority = 'normal' | 'sapper' | 'boss'
 type TrainingDoctrine = 'vanguard' | 'ranger' | null
 
 const items: Item[] = [
   { id: 'warrior', name: '검사', icon: '⚔️', kind: 'unit', cost: 36, sub: '전방 저지 · 높은 체력', range: 1, detectionRange: 5, maxHp: 16, damage: 1.4, attackInterval: 650, moveSpeed: .13, blockCount: 2 },
   { id: 'archer', name: '궁수', icon: '🏹', kind: 'unit', cost: 40, sub: '긴 사거리 · 낮은 체력', range: 3, detectionRange: 4, maxHp: 6, damage: 1.15, attackInterval: 500, moveSpeed: .17, blockCount: 1 },
+  { id: 'guardian', name: '방패병', icon: '🛡️', kind: 'unit', cost: 55, sub: '강한 저지 · 매우 높은 체력', range: 1, maxHp: 28, damage: .8, attackInterval: 800, moveSpeed: .10, blockCount: 4 },
+  { id: 'pyromancer', name: '화염술사', icon: '🔥', kind: 'unit', cost: 58, sub: '범위 공격 · 다수 적 대응', range: 2.5, maxHp: 8, damage: 1.05, attackInterval: 850, moveSpeed: .14, blockCount: 1, splashRadius: 54 },
   { id: 'arrow-tower', name: '화살 포탑', icon: '🏰', kind: 'turret', cost: 80, sub: '빠른 단일 공격', range: 3, detectionRange: 4 },
   { id: 'bomb-trap', name: '폭발 덫', icon: '💥', kind: 'turret', cost: 55, sub: '범위 피해 · 재장전', range: 2, detectionRange: 2 },
   { id: 'frost-tower', name: '냉각 포탑', icon: '❄️', kind: 'turret', cost: 95, sub: '적 감속 · 약한 단일 피해', range: 3, detectionRange: 4 },
@@ -65,11 +67,12 @@ const BUILDING_SLOTS = [
 ]
 
 const SAVE_KEY = 'last-stand-save-v1'
+const getItem = (id: string) => items.find((item) => item.id === id)!
 const DEFAULT_PLACED: Record<string, { item: Item; x: number; y: number }> = {
-  'training-initial': { item: items[4], x: 3820, y: 3820 }, 'workshop-initial': { item: items[5], x: 4180, y: 3820 },
-  'infirmary-initial': { item: items[6], x: 3820, y: 4180 }, 'supply-initial': { item: items[7], x: 4180, y: 4180 },
+  'training-initial': { item: getItem('training'), x: 3820, y: 3820 }, 'workshop-initial': { item: getItem('workshop'), x: 4180, y: 3820 },
+  'infirmary-initial': { item: getItem('infirmary'), x: 3820, y: 4180 }, 'supply-initial': { item: getItem('supply'), x: 4180, y: 4180 },
 }
-type SaveData = Partial<{ placed: Record<string, { item: Item; x: number; y: number }>; gold: number; steelBars: number; storedGold: number; storedSteelBars: number; phase: '낮' | '황혼' | '밤'; day: number; timeLeft: number; baseHp: number; productionQueue: Production[]; buildingLevels: Record<string, number>; baseUpgrades: Record<string, number>; supplyUpgrades: Record<'discount' | 'yield', number>; buildingHp: Record<string, number>; purchased: string[]; kills: number; emergencyRepairDay: number | null; emergencyUses: Record<string, number>; completedGoals: string[]; unitPriorities: Record<'warrior' | 'archer', UnitPriority>; trainingDoctrine: TrainingDoctrine; gameSpeed: 1 | 2 }>
+type SaveData = Partial<{ placed: Record<string, { item: Item; x: number; y: number }>; gold: number; steelBars: number; storedGold: number; storedSteelBars: number; phase: '낮' | '황혼' | '밤'; day: number; timeLeft: number; baseHp: number; productionQueue: Production[]; buildingLevels: Record<string, number>; baseUpgrades: Record<string, number>; supplyUpgrades: Record<'discount' | 'yield', number>; buildingHp: Record<string, number>; purchased: string[]; kills: number; emergencyRepairDay: number | null; emergencyUses: Record<string, number>; completedGoals: string[]; trainingDoctrine: TrainingDoctrine; gameSpeed: 1 | 2 }>
 function loadSave(): SaveData {
   try { const value = JSON.parse(window.localStorage.getItem(SAVE_KEY) ?? '{}'); return value && typeof value === 'object' ? value : {} } catch { return {} }
 }
@@ -108,7 +111,6 @@ function App() {
   const [emergencyAction, setEmergencyAction] = useState<EmergencyAction>(null)
   const [emergencyUses, setEmergencyUses] = useState<Record<string, number>>(saved.emergencyUses ?? {})
   const [completedGoals, setCompletedGoals] = useState<string[]>(saved.completedGoals ?? [])
-  const [unitPriorities, setUnitPriorities] = useState<Record<'warrior' | 'archer', UnitPriority>>(saved.unitPriorities ?? { warrior: 'sapper', archer: 'boss' })
   const [trainingDoctrine, setTrainingDoctrine] = useState<TrainingDoctrine>(saved.trainingDoctrine ?? null)
   const [tutorialStep, setTutorialStep] = useState(() => Number(window.localStorage.getItem('last-stand-tutorial-step') ?? 0))
   const killsRef = useRef(0)
@@ -149,8 +151,8 @@ function App() {
   const isGoalDone = activeGoal ? completedGoals.includes(activeGoal.id) : false
 
   useLayoutEffect(() => {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, unitPriorities, trainingDoctrine, gameSpeed }))
-  }, [placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, unitPriorities, trainingDoctrine, gameSpeed])
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, trainingDoctrine, gameSpeed }))
+  }, [placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, trainingDoctrine, gameSpeed])
 
   useEffect(() => {
     let seconds = 0
@@ -219,7 +221,7 @@ function App() {
         const active = current[0]
         if (!active) return current
         if (active.remaining > 1) return [{ ...active, remaining: active.remaining - 1 }, ...current.slice(1)]
-        const count = active.item.id === 'warrior' ? 2 : 1
+        const count = getProductionSpec(active.item).count
         setPlaced((entities) => {
           const next = { ...entities }
           for (let index = 0; index < count; index += 1) {
@@ -260,13 +262,15 @@ function App() {
     setNotice(`목표 완료: ${activeGoal.label} · 코인 +${activeGoal.reward}`)
   }, [activeGoal, completedGoals])
 
+  const getProductionSpec = (item: Item) => item.id === 'warrior' ? { count: 2, seconds: 4 } : item.id === 'guardian' || item.id === 'pyromancer' ? { count: 1, seconds: 6 } : { count: 1, seconds: 5 }
+
   function startUnitProduction(item: Item) {
     if (!canPrepare) { setNotice('밤에는 유닛 생산을 시작할 수 없습니다.'); return }
     const cost = getUnitCost(item)
     if (gold < cost) { setNotice('골드가 부족합니다.'); return }
     if (productionQueue.length >= queueCapacity) { setNotice('생산 대기열이 가득 찼습니다. 거점 강화로 최대 수를 늘릴 수 있습니다.'); return }
     setGold((value) => value - cost)
-    setProductionQueue((current) => [...current, { item, remaining: Math.max(2, Math.ceil((item.id === 'warrior' ? 4 : 5) * (1 - Math.min(.4, commandLevel * .1)))) }])
+    setProductionQueue((current) => [...current, { item, remaining: Math.max(2, Math.ceil(getProductionSpec(item).seconds * (1 - Math.min(.4, commandLevel * .1)))) }])
     completeDailyGoal('unit')
     setNotice(`${item.name}을(를) 생산 대기열에 추가했습니다.`)
   }
@@ -541,7 +545,7 @@ function App() {
       </section>
 
       <section className="battlefield" aria-label="8방향 본진 지도">
-        <BattlefieldCanvas placed={placed} selected={selected} preview={dragging} previewCursor={dragCursor} phase={phase} day={day} isGameOver={gameOver} gameSpeed={gameSpeed} isPaused={isPaused} emergencyAction={emergencyAction} buildingHp={buildingHp} trainingLevel={trainingLevel} unitDamageMultiplier={unitDamageMultiplier} warriorHpMultiplier={warriorHpMultiplier} archerRangeBonus={archerRangeBonus} unitPriorities={unitPriorities} warriorBlockBonus={warriorBlockBonus} archerAttackSpeedMultiplier={archerAttackSpeedMultiplier} workshopLevel={workshopLevel} infirmaryLevel={infirmaryLevel} onMapClick={place} onTurretSlotClick={placeTurret} onEntityDestroyed={handleEntityDestroyed} onEntityClick={handlePlacedClick} onCoreClick={handleCoreClick} onBaseDamaged={handleBaseDamaged} onEnemyDefeated={handleEnemyDefeated} onBuildingHpChange={handleBuildingHpChange} />
+        <BattlefieldCanvas placed={placed} selected={selected} preview={dragging} previewCursor={dragCursor} phase={phase} day={day} isGameOver={gameOver} gameSpeed={gameSpeed} isPaused={isPaused} emergencyAction={emergencyAction} buildingHp={buildingHp} trainingLevel={trainingLevel} unitDamageMultiplier={unitDamageMultiplier} warriorHpMultiplier={warriorHpMultiplier} archerRangeBonus={archerRangeBonus} warriorBlockBonus={warriorBlockBonus} archerAttackSpeedMultiplier={archerAttackSpeedMultiplier} workshopLevel={workshopLevel} infirmaryLevel={infirmaryLevel} onMapClick={place} onTurretSlotClick={placeTurret} onEntityDestroyed={handleEntityDestroyed} onEntityClick={handlePlacedClick} onCoreClick={handleCoreClick} onBaseDamaged={handleBaseDamaged} onEnemyDefeated={handleEnemyDefeated} onBuildingHpChange={handleBuildingHpChange} />
       </section>
 
       <p className="notice">{notice}</p>
@@ -556,10 +560,9 @@ function App() {
 
         <section className="build-panel">
           {tab === 'resource' && <div className="upgrade-guide"><span>🏕️</span><div><b>기지 자원 비축</b><p>코인 {storedGold} · 철근 {storedSteelBars}<br />결손 체력 20당 철근 1개</p></div><button onClick={collectBaseResources}>자원 회수</button><button onClick={repairBase} disabled={baseHp >= baseMaxHp || (phase === '밤' && emergencyRepairDay === day)}>🔩 {getBaseRepairCost()} 완전 수리</button></div>}
-          {tab === 'unit' && <div className="unit-tactics"><b>🎯 전술 우선순위</b><small>검사</small>{(['normal', 'sapper', 'boss'] as UnitPriority[]).map((priority) => <button key={`w-${priority}`} className={unitPriorities.warrior === priority ? 'active' : ''} onClick={() => setUnitPriorities((current) => ({ ...current, warrior: priority }))}>{priority === 'normal' ? '일반' : priority === 'sapper' ? '공병' : '보스'}</button>)}<small>궁수</small>{(['normal', 'sapper', 'boss'] as UnitPriority[]).map((priority) => <button key={`a-${priority}`} className={unitPriorities.archer === priority ? 'active' : ''} onClick={() => setUnitPriorities((current) => ({ ...current, archer: priority }))}>{priority === 'normal' ? '일반' : priority === 'sapper' ? '공병' : '보스'}</button>)}</div>}
           {tab === 'unit' && tabItems.map((item) => (
             <button key={item.id} onClick={() => startUnitProduction(item)} disabled={!canPrepare} className="build-card">
-              <span className="card-icon">{item.icon}</span><span className="card-copy"><b>{item.name}</b><small>{item.id === 'warrior' ? '4초 후 2명 생성' : '5초 후 1명 생성'}</small></span><span className="cost">🪙 {getUnitCost(item)}</span>
+              <span className="card-icon">{item.icon}</span><span className="card-copy"><b>{item.name}</b><small>{getProductionSpec(item).seconds}초 후 {getProductionSpec(item).count}명 생성</small></span><span className="cost">🪙 {getUnitCost(item)}</span>
             </button>
           ))}
           {tab === 'turret' && tabItems.map((item) => (

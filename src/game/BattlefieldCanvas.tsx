@@ -15,6 +15,7 @@ type CanvasItem = {
   attackInterval?: number
   moveSpeed?: number
   blockCount?: number
+  splashRadius?: number
 }
 
 type PlacedEntity = { item: CanvasItem; x: number; y: number }
@@ -35,7 +36,6 @@ type Props = {
   unitDamageMultiplier: number
   warriorHpMultiplier: number
   archerRangeBonus: number
-  unitPriorities: Record<'warrior' | 'archer', 'normal' | 'sapper' | 'boss'>
   warriorBlockBonus: number
   archerAttackSpeedMultiplier: number
   workshopLevel: number
@@ -69,7 +69,7 @@ type ActiveUnit = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Con
 type ActiveTurret = { item: CanvasItem; sprite: Phaser.GameObjects.Container; direction: Phaser.Math.Vector2; hp: number; maxHp: number; bar: HealthBar; nextAttackAt: number }
 type ActiveBuilding = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Container; warning: Phaser.GameObjects.Text; hp: number; maxHp: number; bar: HealthBar }
 
-export function BattlefieldCanvas({ placed, selected, preview, previewCursor, phase, day, isGameOver, gameSpeed, isPaused, emergencyAction, buildingHp, trainingLevel, unitDamageMultiplier, warriorHpMultiplier, archerRangeBonus, unitPriorities, warriorBlockBonus, archerAttackSpeedMultiplier, workshopLevel, infirmaryLevel, onMapClick, onTurretSlotClick, onEntityDestroyed, onEntityClick, onCoreClick, onBaseDamaged, onEnemyDefeated, onBuildingHpChange }: Props) {
+export function BattlefieldCanvas({ placed, selected, preview, previewCursor, phase, day, isGameOver, gameSpeed, isPaused, emergencyAction, buildingHp, trainingLevel, unitDamageMultiplier, warriorHpMultiplier, archerRangeBonus, warriorBlockBonus, archerAttackSpeedMultiplier, workshopLevel, infirmaryLevel, onMapClick, onTurretSlotClick, onEntityDestroyed, onEntityClick, onCoreClick, onBaseDamaged, onEnemyDefeated, onBuildingHpChange }: Props) {
   const parent = useRef<HTMLDivElement>(null)
   const onMapClickRef = useRef(onMapClick)
   const onEntityClickRef = useRef(onEntityClick)
@@ -85,7 +85,6 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
   const unitDamageMultiplierRef = useRef(unitDamageMultiplier)
   const warriorHpMultiplierRef = useRef(warriorHpMultiplier)
   const archerRangeBonusRef = useRef(archerRangeBonus)
-  const unitPrioritiesRef = useRef(unitPriorities)
   const warriorBlockBonusRef = useRef(warriorBlockBonus)
   const archerAttackSpeedMultiplierRef = useRef(archerAttackSpeedMultiplier)
   const workshopLevelRef = useRef(workshopLevel)
@@ -119,7 +118,6 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
   useEffect(() => { unitDamageMultiplierRef.current = unitDamageMultiplier }, [unitDamageMultiplier])
   useEffect(() => { warriorHpMultiplierRef.current = warriorHpMultiplier }, [warriorHpMultiplier])
   useEffect(() => { archerRangeBonusRef.current = archerRangeBonus }, [archerRangeBonus])
-  useEffect(() => { unitPrioritiesRef.current = unitPriorities }, [unitPriorities])
   useEffect(() => { warriorBlockBonusRef.current = warriorBlockBonus }, [warriorBlockBonus])
   useEffect(() => { archerAttackSpeedMultiplierRef.current = archerAttackSpeedMultiplier }, [archerAttackSpeedMultiplier])
   useEffect(() => { workshopLevelRef.current = workshopLevel }, [workshopLevel])
@@ -465,7 +463,14 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         const candidate = this.enemies
           .filter((enemy) => enemy.sprite.active)
           .map((enemy) => ({ enemy, distance: Phaser.Math.Distance.Between(unit.sprite.x, unit.sprite.y, enemy.sprite.x, enemy.sprite.y) }))
-          .sort((a, b) => { const priority = unitPrioritiesRef.current[unit.item.id === 'warrior' ? 'warrior' : 'archer']; const aPriority = a.enemy.role === priority ? 0 : 1; const bPriority = b.enemy.role === priority ? 0 : 1; return aPriority - bPriority || a.enemy.assignedUnits - b.enemy.assignedUnits || a.distance - b.distance })[0]?.enemy ?? null
+          .sort((a, b) => {
+            const rank = (enemy: ActiveEnemy) => {
+              if (unit.item.id === 'archer') return enemy.role === 'sapper' ? 0 : enemy.role === 'runner' ? 1 : enemy.role === 'boss' ? 2 : 3
+              if (unit.item.id === 'pyromancer') return enemy.role === 'brute' || enemy.role === 'boss' ? 0 : 1
+              return 0
+            }
+            return rank(a.enemy) - rank(b.enemy) || a.enemy.assignedUnits - b.enemy.assignedUnits || a.distance - b.distance
+          })[0]?.enemy ?? null
         if (candidate) candidate.assignedUnits += 1
         return candidate
       }
@@ -512,9 +517,10 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
           if (time >= unit.nextAttackAt) {
             unit.nextAttackAt = time + unit.attackInterval
             if (unit.item.id === 'archer') this.launchArrow(unit.sprite.x, unit.sprite.y - 5, target, 0xa6e4ff)
-            target.hp -= unit.damage * unitDamageMultiplierRef.current
-            this.tweens.add({ targets: target.sprite, alpha: .35, duration: 80, yoyo: true })
-            if (target.hp <= 0) this.defeatEnemy(target)
+            if (unit.item.id === 'pyromancer') this.launchArrow(unit.sprite.x, unit.sprite.y - 5, target, 0xff9b65)
+            const damage = unit.damage * unitDamageMultiplierRef.current
+            const affected = unit.item.splashRadius ? this.enemies.filter((enemy) => enemy.sprite.active && Phaser.Math.Distance.Between(target.sprite.x, target.sprite.y, enemy.sprite.x, enemy.sprite.y) <= unit.item.splashRadius!) : [target]
+            affected.forEach((enemy) => { enemy.hp -= damage; this.tweens.add({ targets: enemy.sprite, alpha: .35, duration: 80, yoyo: true }); if (enemy.hp <= 0) this.defeatEnemy(enemy) })
           }
         })
         this.turrets.forEach((turret) => {
