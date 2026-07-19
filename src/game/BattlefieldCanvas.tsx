@@ -42,6 +42,10 @@ type Props = {
   archerAttackSpeedMultiplier: number
   workshopLevel: number
   infirmaryLevel: number
+  combatPower: number
+  nightThreat: number
+  threatStatus: '위험' | '경계' | '안정'
+  threatEnemies: string
   onMapClick: (x: number, y: number, itemId?: string) => void
   onTurretSlotClick: (x: number, y: number) => void
   onEntityDestroyed: (id: string, name: string, item: CanvasItem) => void
@@ -71,7 +75,7 @@ type ActiveUnit = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Con
 type ActiveTurret = { item: CanvasItem; sprite: Phaser.GameObjects.Container; direction: Phaser.Math.Vector2; hp: number; maxHp: number; bar: HealthBar; nextAttackAt: number }
 type ActiveBuilding = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Container; warning: Phaser.GameObjects.Text; hp: number; maxHp: number; bar: HealthBar }
 
-export function BattlefieldCanvas({ placed, selected, preview, previewCursor, phase, day, isGameOver, gameSpeed, isPaused, emergencyAction, buildingHp, trainingLevel, unitDamageMultiplier, warriorHpMultiplier, archerRangeBonus, warriorBlockBonus, archerAttackSpeedMultiplier, workshopLevel, infirmaryLevel, onMapClick, onTurretSlotClick, onEntityDestroyed, onEntityClick, onCoreClick, onBaseDamaged, onEnemyDefeated, onBuildingHpChange }: Props) {
+export function BattlefieldCanvas({ placed, selected, preview, previewCursor, phase, day, isGameOver, gameSpeed, isPaused, emergencyAction, buildingHp, trainingLevel, unitDamageMultiplier, warriorHpMultiplier, archerRangeBonus, warriorBlockBonus, archerAttackSpeedMultiplier, workshopLevel, infirmaryLevel, combatPower, nightThreat, threatStatus, threatEnemies, onMapClick, onTurretSlotClick, onEntityDestroyed, onEntityClick, onCoreClick, onBaseDamaged, onEnemyDefeated, onBuildingHpChange }: Props) {
   const parent = useRef<HTMLDivElement>(null)
   const onMapClickRef = useRef(onMapClick)
   const onEntityClickRef = useRef(onEntityClick)
@@ -91,6 +95,10 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
   const archerAttackSpeedMultiplierRef = useRef(archerAttackSpeedMultiplier)
   const workshopLevelRef = useRef(workshopLevel)
   const infirmaryLevelRef = useRef(infirmaryLevel)
+  const combatPowerRef = useRef(combatPower)
+  const nightThreatRef = useRef(nightThreat)
+  const threatStatusRef = useRef(threatStatus)
+  const threatEnemiesRef = useRef(threatEnemies)
   const dayRef = useRef(day)
   const gameOverRef = useRef(isGameOver)
   const gameSpeedRef = useRef(gameSpeed)
@@ -124,6 +132,10 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
   useEffect(() => { archerAttackSpeedMultiplierRef.current = archerAttackSpeedMultiplier }, [archerAttackSpeedMultiplier])
   useEffect(() => { workshopLevelRef.current = workshopLevel }, [workshopLevel])
   useEffect(() => { infirmaryLevelRef.current = infirmaryLevel }, [infirmaryLevel])
+  useEffect(() => { combatPowerRef.current = combatPower }, [combatPower])
+  useEffect(() => { nightThreatRef.current = nightThreat }, [nightThreat])
+  useEffect(() => { threatStatusRef.current = threatStatus }, [threatStatus])
+  useEffect(() => { threatEnemiesRef.current = threatEnemies }, [threatEnemies])
   useEffect(() => { dayRef.current = day }, [day])
   useEffect(() => { gameOverRef.current = isGameOver }, [isGameOver])
   useEffect(() => { gameSpeedRef.current = gameSpeed; isPausedRef.current = isPaused }, [gameSpeed, isPaused])
@@ -158,6 +170,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
       private boss?: ActiveEnemy
       private bossBar?: HealthBar
       private bossLabel?: Phaser.GameObjects.Text
+      private threatForecast?: Phaser.GameObjects.Container
 
       constructor() { super('infinite-field') }
 
@@ -208,6 +221,17 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         this.atmosphere = this.add.rectangle(CENTER, CENTER, WORLD_SIZE, WORLD_SIZE, 0xffffff, 0).setDepth(-1)
       }
 
+      private showThreatForecast() {
+        this.threatForecast?.destroy()
+        const status = threatStatusRef.current
+        const color = status === '위험' ? '#ff9a89' : status === '안정' ? '#a8e99c' : '#ffe28b'
+        const panel = this.add.rectangle(CENTER, CENTER - 245, 222, 74, 0x14242d, .93).setStrokeStyle(1, status === '위험' ? 0xdf756b : status === '안정' ? 0x84be78 : 0xe3bd67, .85)
+        const title = this.add.text(CENTER, CENTER - 270, `⚠ 밤의 습격 예보 · ${status}`, { fontFamily: 'sans-serif', fontStyle: 'bold', fontSize: '11px', color }).setOrigin(.5)
+        const power = this.add.text(CENTER, CENTER - 250, `아군 전투력 ${combatPowerRef.current}  /  위협도 ${nightThreatRef.current}`, { fontFamily: 'sans-serif', fontSize: '11px', color: '#f3eccb' }).setOrigin(.5)
+        const enemies = this.add.text(CENTER, CENTER - 231, threatEnemiesRef.current, { fontFamily: 'sans-serif', fontSize: '8px', color: '#b7d0c2' }).setOrigin(.5)
+        this.threatForecast = this.add.container(0, 0, [panel, title, power, enemies]).setDepth(15)
+      }
+
       private applyPhase(nextPhase: Props['phase']) {
         if (!this.fieldBackground || !this.atmosphere) return
         const previousPhase = this.currentPhase
@@ -219,6 +243,8 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         }[nextPhase]
         this.fieldBackground.setFillStyle(palette.ground)
         this.atmosphere.setFillStyle(palette.overlay, palette.alpha)
+        if (nextPhase === '황혼') this.showThreatForecast()
+        else { this.threatForecast?.destroy(); this.threatForecast = undefined }
         if (nextPhase === '밤' && previousPhase !== '밤') {
           const initialWave = Math.min(8, 2 + dayRef.current)
           for (let direction = 0; direction < initialWave; direction += 1) this.spawnEnemy(direction % 8, direction * 160)

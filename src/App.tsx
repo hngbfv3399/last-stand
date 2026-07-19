@@ -150,6 +150,19 @@ function App() {
   const getUnitCost = (item: Item) => Math.ceil(item.cost * (1 - Math.min(.25, supplyDiscountLevel * .05)))
   const warriorCount = Object.values(placed).filter((entity) => entity.item.id === 'warrior').length
   const archerCount = Object.values(placed).filter((entity) => entity.item.id === 'archer').length
+  const combatPower = Math.round(Object.values(placed).reduce((total, entity) => {
+    const item = entity.item
+    if (item.kind === 'turret') return total + (item.id === 'arrow-tower' ? 22 : item.id === 'bomb-trap' ? 27 : 25) * (1 + (workshopLevel - 1) * .12)
+    if (item.kind !== 'unit') return total
+    if (item.id === 'medic') return total + 22
+    const hp = (item.maxHp ?? 8) * (item.id === 'warrior' ? warriorHpMultiplier : 1)
+    const attackRate = 1000 / ((item.attackInterval ?? 700) * (item.id === 'archer' ? archerAttackSpeedMultiplier : 1))
+    const block = (item.blockCount ?? 1) + (item.id === 'warrior' ? warriorBlockBonus : 0)
+    return total + hp * .55 + (item.damage ?? 0) * unitDamageMultiplier * attackRate * 10 + (item.range ?? 1) * 2 + block * 2
+  }, 0) + fortifyLevel * 3)
+  const nightThreat = Math.round(18 + day * 7 + (day >= 4 ? 7 : 0) + (day >= 6 ? 10 : 0) + (day >= 8 ? 12 : 0) + (day % 5 === 0 ? 30 : 0))
+  const threatStatus = combatPower < nightThreat * .8 ? '위험' : combatPower > nightThreat * 1.2 ? '안정' : '경계'
+  const threatEnemies = `${day >= 8 ? '공병 · ' : ''}${day >= 6 ? '파괴병 · ' : ''}${day >= 4 ? '돌진병 · ' : ''}일반 좀비${day % 5 === 0 ? ' · 보스' : ''}`
   const activeGoal = DAY_GOALS[day]
   const isGoalDone = activeGoal ? completedGoals.includes(activeGoal.id) : false
 
@@ -539,7 +552,7 @@ function App() {
           <span>{phase === '낮' ? '☀️' : phase === '황혼' ? '🌆' : '🌙'}</span>{phase} <b>{String(timeLeft).padStart(2, '0')}초</b>
           <div className="time-controls"><button onClick={() => setIsPaused((value) => !value)} aria-label={isPaused ? '계속' : '일시정지'}>{isPaused ? '▶' : 'Ⅱ'}</button><button onClick={() => setGameSpeed((value) => value === 1 ? 2 : 1)} aria-label="배속 변경">{gameSpeed}×</button></div>
         </div>
-        <div className="base-health"><span>본진</span><div><i className={baseHp / baseMaxHp > .6 ? 'healthy' : baseHp / baseMaxHp > .3 ? 'caution' : 'critical'} style={{ width: `${baseHp / baseMaxHp * 100}%` }} /></div><b>{baseHp} / {baseMaxHp}</b></div>
+        <div className="base-health"><span>본진 · ⚔ {combatPower}</span><div><i className={baseHp / baseMaxHp > .6 ? 'healthy' : baseHp / baseMaxHp > .3 ? 'caution' : 'critical'} style={{ width: `${baseHp / baseMaxHp * 100}%` }} /></div><b>{baseHp} / {baseMaxHp}</b></div>
       </header>
 
       <section className="resources" aria-label="자원">
@@ -548,7 +561,7 @@ function App() {
       </section>
 
       <section className="battlefield" aria-label="8방향 본진 지도">
-        <BattlefieldCanvas placed={placed} selected={selected} preview={dragging} previewCursor={dragCursor} phase={phase} day={day} isGameOver={gameOver} gameSpeed={gameSpeed} isPaused={isPaused} emergencyAction={emergencyAction} buildingHp={buildingHp} trainingLevel={trainingLevel} unitDamageMultiplier={unitDamageMultiplier} warriorHpMultiplier={warriorHpMultiplier} archerRangeBonus={archerRangeBonus} warriorBlockBonus={warriorBlockBonus} archerAttackSpeedMultiplier={archerAttackSpeedMultiplier} workshopLevel={workshopLevel} infirmaryLevel={infirmaryLevel} onMapClick={place} onTurretSlotClick={placeTurret} onEntityDestroyed={handleEntityDestroyed} onEntityClick={handlePlacedClick} onCoreClick={handleCoreClick} onBaseDamaged={handleBaseDamaged} onEnemyDefeated={handleEnemyDefeated} onBuildingHpChange={handleBuildingHpChange} />
+        <BattlefieldCanvas placed={placed} selected={selected} preview={dragging} previewCursor={dragCursor} phase={phase} day={day} isGameOver={gameOver} gameSpeed={gameSpeed} isPaused={isPaused} emergencyAction={emergencyAction} buildingHp={buildingHp} trainingLevel={trainingLevel} unitDamageMultiplier={unitDamageMultiplier} warriorHpMultiplier={warriorHpMultiplier} archerRangeBonus={archerRangeBonus} warriorBlockBonus={warriorBlockBonus} archerAttackSpeedMultiplier={archerAttackSpeedMultiplier} workshopLevel={workshopLevel} infirmaryLevel={infirmaryLevel} combatPower={combatPower} nightThreat={nightThreat} threatStatus={threatStatus} threatEnemies={threatEnemies} onMapClick={place} onTurretSlotClick={placeTurret} onEntityDestroyed={handleEntityDestroyed} onEntityClick={handlePlacedClick} onCoreClick={handleCoreClick} onBaseDamaged={handleBaseDamaged} onEnemyDefeated={handleEnemyDefeated} onBuildingHpChange={handleBuildingHpChange} />
       </section>
 
       <p className="notice">{notice}</p>
