@@ -58,7 +58,7 @@ const DEFAULT_PLACED: Record<string, { item: Item; x: number; y: number }> = {
   'training-initial': { item: items[4], x: 3820, y: 3820 }, 'workshop-initial': { item: items[5], x: 4180, y: 3820 },
   'infirmary-initial': { item: items[6], x: 3820, y: 4180 }, 'supply-initial': { item: items[7], x: 4180, y: 4180 },
 }
-type SaveData = Partial<{ placed: Record<string, { item: Item; x: number; y: number }>; gold: number; steelBars: number; storedGold: number; storedSteelBars: number; phase: '낮' | '황혼' | '밤'; day: number; timeLeft: number; baseHp: number; productionQueue: Production[]; buildingLevels: Record<string, number>; baseUpgrades: Record<string, number>; supplyUpgrades: Record<'discount' | 'yield', number>; buildingHp: Record<string, number>; purchased: string[]; kills: number; emergencyRepairDay: number | null; gameSpeed: 1 | 2 }>
+type SaveData = Partial<{ placed: Record<string, { item: Item; x: number; y: number }>; gold: number; steelBars: number; storedGold: number; storedSteelBars: number; phase: '낮' | '황혼' | '밤'; day: number; timeLeft: number; baseHp: number; productionQueue: Production[]; buildingLevels: Record<string, number>; baseUpgrades: Record<string, number>; supplyUpgrades: Record<'discount' | 'yield', number>; buildingHp: Record<string, number>; purchased: string[]; kills: number; emergencyRepairDay: number | null; emergencyUses: Record<string, number>; gameSpeed: 1 | 2 }>
 function loadSave(): SaveData {
   try { const value = JSON.parse(window.localStorage.getItem(SAVE_KEY) ?? '{}'); return value && typeof value === 'object' ? value : {} } catch { return {} }
 }
@@ -95,13 +95,14 @@ function App() {
   const [isPaused, setIsPaused] = useState(false)
   const [showEmergencyGuide, setShowEmergencyGuide] = useState(false)
   const [emergencyAction, setEmergencyAction] = useState<EmergencyAction>(null)
-  const [emergencyUses, setEmergencyUses] = useState<Record<string, number>>({})
+  const [emergencyUses, setEmergencyUses] = useState<Record<string, number>>(saved.emergencyUses ?? {})
   const [tutorialStep, setTutorialStep] = useState(() => Number(window.localStorage.getItem('last-stand-tutorial-step') ?? 0))
   const killsRef = useRef(0)
   const nightStartKillsRef = useRef(0)
   const [nightReport, setNightReport] = useState<{ day: number; kills: number } | null>(null)
   const [highScore, setHighScore] = useState(() => Number(window.localStorage.getItem('last-stand-high-score') ?? 0))
   const previousPhaseRef = useRef(phase)
+  const phaseHasMountedRef = useRef(false)
   const production = productionQueue[0] ?? null
   const activeProductionId = production?.item.id
 
@@ -126,8 +127,8 @@ function App() {
   const getUnitCost = (item: Item) => Math.ceil(item.cost * (1 - Math.min(.25, supplyDiscountLevel * .05)))
 
   useEffect(() => {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, gameSpeed }))
-  }, [placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, gameSpeed])
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, gameSpeed }))
+  }, [placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, gameSpeed])
 
   useEffect(() => {
     let seconds = 0
@@ -141,6 +142,11 @@ function App() {
   }, [economyLevel, supplyYieldLevel])
 
   useEffect(() => {
+    if (!phaseHasMountedRef.current) {
+      phaseHasMountedRef.current = true
+      if (phase === '밤') nightStartKillsRef.current = killsRef.current
+      return
+    }
     setTimeLeft(PHASE_SECONDS[phase])
     setEmergencyUses({})
     setEmergencyAction(null)
