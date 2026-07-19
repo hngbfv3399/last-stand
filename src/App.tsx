@@ -19,6 +19,8 @@ type Item = {
   moveSpeed?: number
   blockCount?: number
   splashRadius?: number
+  healAmount?: number
+  healTargets?: number
 }
 type BuildingModal = { id: string; item: Item }
 type Production = { item: Item; remaining: number }
@@ -30,6 +32,7 @@ const items: Item[] = [
   { id: 'archer', name: '궁수', icon: '🏹', kind: 'unit', cost: 40, sub: '긴 사거리 · 낮은 체력', range: 3, detectionRange: 4, maxHp: 6, damage: 1.15, attackInterval: 500, moveSpeed: .17, blockCount: 1 },
   { id: 'guardian', name: '방패병', icon: '🛡️', kind: 'unit', cost: 55, sub: '강한 저지 · 매우 높은 체력', range: 1, maxHp: 28, damage: .8, attackInterval: 800, moveSpeed: .10, blockCount: 4 },
   { id: 'pyromancer', name: '화염술사', icon: '🔥', kind: 'unit', cost: 58, sub: '범위 공격 · 다수 적 대응', range: 2.5, maxHp: 8, damage: 1.05, attackInterval: 850, moveSpeed: .14, blockCount: 1, splashRadius: 54 },
+  { id: 'medic', name: '매딕', icon: '💉', kind: 'unit', cost: 52, sub: '밤 지원 · 최대 2명 동시 치료', range: 2.4, maxHp: 9, damage: 0, attackInterval: 1050, moveSpeed: .16, blockCount: 0, healAmount: 2, healTargets: 2 },
   { id: 'arrow-tower', name: '화살 포탑', icon: '🏰', kind: 'turret', cost: 80, sub: '빠른 단일 공격', range: 3, detectionRange: 4 },
   { id: 'bomb-trap', name: '폭발 덫', icon: '💥', kind: 'turret', cost: 55, sub: '범위 피해 · 재장전', range: 2, detectionRange: 2 },
   { id: 'frost-tower', name: '냉각 포탑', icon: '❄️', kind: 'turret', cost: 95, sub: '적 감속 · 약한 단일 피해', range: 3, detectionRange: 4 },
@@ -262,7 +265,7 @@ function App() {
     setNotice(`목표 완료: ${activeGoal.label} · 코인 +${activeGoal.reward}`)
   }, [activeGoal, completedGoals])
 
-  const getProductionSpec = (item: Item) => item.id === 'warrior' ? { count: 2, seconds: 4 } : item.id === 'guardian' || item.id === 'pyromancer' ? { count: 1, seconds: 6 } : { count: 1, seconds: 5 }
+  const getProductionSpec = (item: Item) => item.id === 'warrior' ? { count: 2, seconds: 4 } : item.id === 'guardian' || item.id === 'pyromancer' || item.id === 'medic' ? { count: 1, seconds: 6 } : { count: 1, seconds: 5 }
 
   function startUnitProduction(item: Item) {
     if (!canPrepare) { setNotice('밤에는 유닛 생산을 시작할 수 없습니다.'); return }

@@ -16,6 +16,8 @@ type CanvasItem = {
   moveSpeed?: number
   blockCount?: number
   splashRadius?: number
+  healAmount?: number
+  healTargets?: number
 }
 
 type PlacedEntity = { item: CanvasItem; x: number; y: number }
@@ -459,6 +461,12 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         this.tweens.add({ targets: projectile, x: targetX, y: targetY, duration: Math.max(110, Math.min(260, Phaser.Math.Distance.Between(sourceX, sourceY, targetX, targetY) * .55)), ease: 'Linear', onComplete: () => projectile.destroy() })
       }
 
+      private showHealLink(source: ActiveUnit, target: ActiveUnit) {
+        const link = this.add.line(0, 0, source.sprite.x, source.sprite.y, target.sprite.x, target.sprite.y, 0x91e7b7, .8).setOrigin(0).setDepth(11)
+        this.tweens.add({ targets: link, alpha: 0, duration: 300, onComplete: () => link.destroy() })
+        this.tweens.add({ targets: target.sprite, alpha: .45, duration: 90, yoyo: true })
+      }
+
       private assignTarget(unit: ActiveUnit) {
         const candidate = this.enemies
           .filter((enemy) => enemy.sprite.active)
@@ -497,6 +505,23 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         })
         this.buildings = this.buildings.filter((building) => building.sprite.active)
         this.units.forEach((unit) => {
+          if (unit.item.id === 'medic') {
+            const supportRadius = (unit.item.range ?? 2) * 45
+            if (this.currentPhase !== '밤') {
+              const homeDistance = Phaser.Math.Distance.Between(unit.sprite.x, unit.sprite.y, unit.homeX, unit.homeY)
+              if (homeDistance > 2) this.moveToward(unit.sprite, unit.homeX, unit.homeY, delta, unit.moveSpeed * .65)
+              return
+            }
+            const injured = this.units.filter((candidate) => candidate !== unit && candidate.sprite.active && candidate.hp < candidate.maxHp).map((candidate) => ({ unit: candidate, distance: Phaser.Math.Distance.Between(unit.sprite.x, unit.sprite.y, candidate.sprite.x, candidate.sprite.y) })).sort((a, b) => a.unit.hp / a.unit.maxHp - b.unit.hp / b.unit.maxHp || a.distance - b.distance)
+            const primary = injured[0]
+            if (!primary) return
+            if (primary.distance > supportRadius * .85) { this.moveToward(unit.sprite, primary.unit.sprite.x, primary.unit.sprite.y, delta, unit.moveSpeed); return }
+            if (time >= unit.nextAttackAt) {
+              unit.nextAttackAt = time + unit.attackInterval
+              injured.filter((candidate) => candidate.distance <= supportRadius).slice(0, unit.item.healTargets ?? 2).forEach((candidate) => { candidate.unit.hp = Math.min(candidate.unit.maxHp, candidate.unit.hp + (unit.item.healAmount ?? 2)); this.showHealLink(unit, candidate.unit) })
+            }
+            return
+          }
           const attackRadius = ((unit.item.range ?? 1) + (unit.item.id === 'archer' ? archerRangeBonusRef.current : 0)) * 45
           if (!unit.target || !unit.target.sprite.active) unit.target = this.assignTarget(unit)
           const target = unit.target
