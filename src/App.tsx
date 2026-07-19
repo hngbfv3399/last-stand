@@ -22,12 +22,15 @@ type Item = {
 type BuildingModal = { id: string; item: Item }
 type Production = { item: Item; remaining: number }
 type EmergencyAction = { id: 'flare' | 'shockwave' | 'medkit'; nonce: number } | null
+type UnitPriority = 'normal' | 'sapper' | 'boss'
+type TrainingDoctrine = 'vanguard' | 'ranger' | null
 
 const items: Item[] = [
   { id: 'warrior', name: '검사', icon: '⚔️', kind: 'unit', cost: 36, sub: '전방 저지 · 높은 체력', range: 1, detectionRange: 5, maxHp: 16, damage: 1.4, attackInterval: 650, moveSpeed: .13, blockCount: 2 },
   { id: 'archer', name: '궁수', icon: '🏹', kind: 'unit', cost: 40, sub: '긴 사거리 · 낮은 체력', range: 3, detectionRange: 4, maxHp: 6, damage: 1.15, attackInterval: 500, moveSpeed: .17, blockCount: 1 },
   { id: 'arrow-tower', name: '화살 포탑', icon: '🏰', kind: 'turret', cost: 80, sub: '빠른 단일 공격', range: 3, detectionRange: 4 },
   { id: 'bomb-trap', name: '폭발 덫', icon: '💥', kind: 'turret', cost: 55, sub: '범위 피해 · 재장전', range: 2, detectionRange: 2 },
+  { id: 'frost-tower', name: '냉각 포탑', icon: '❄️', kind: 'turret', cost: 95, sub: '적 감속 · 약한 단일 피해', range: 3, detectionRange: 4 },
   { id: 'training', name: '훈련소', icon: '🛡️', kind: 'building', cost: 120, sub: '유닛 강화 연구소' },
   { id: 'workshop', name: '야전 공방', icon: '🔧', kind: 'building', cost: 110, sub: '포탑 · 덫 보강' },
   { id: 'infirmary', name: '의무소', icon: '⛑️', kind: 'building', cost: 95, sub: '유닛 체력 회복 지원' },
@@ -53,6 +56,7 @@ const BASE_UPGRADES = [
   { id: 'economy', icon: '⛏️', name: '자급자족', text: '골드 수입 +0.25/초 · 철근 생산 가속', baseCost: 70 },
   { id: 'fortify', icon: '🛡️', name: '거점 방어', text: '본진 최대 체력 +20 · 강화 시 체력 회복', baseCost: 85 },
   { id: 'command', icon: '📯', name: '지휘 체계', text: '생산 대기열 +2 · 유닛 생산 시간 단축', baseCost: 75 },
+  { id: 'steel', icon: '🔩', name: '제련 설비', text: '철근 생산 주기 -1초', baseCost: 80 },
 ]
 
 const BUILDING_SLOTS = [
@@ -65,7 +69,7 @@ const DEFAULT_PLACED: Record<string, { item: Item; x: number; y: number }> = {
   'training-initial': { item: items[4], x: 3820, y: 3820 }, 'workshop-initial': { item: items[5], x: 4180, y: 3820 },
   'infirmary-initial': { item: items[6], x: 3820, y: 4180 }, 'supply-initial': { item: items[7], x: 4180, y: 4180 },
 }
-type SaveData = Partial<{ placed: Record<string, { item: Item; x: number; y: number }>; gold: number; steelBars: number; storedGold: number; storedSteelBars: number; phase: '낮' | '황혼' | '밤'; day: number; timeLeft: number; baseHp: number; productionQueue: Production[]; buildingLevels: Record<string, number>; baseUpgrades: Record<string, number>; supplyUpgrades: Record<'discount' | 'yield', number>; buildingHp: Record<string, number>; purchased: string[]; kills: number; emergencyRepairDay: number | null; emergencyUses: Record<string, number>; completedGoals: string[]; gameSpeed: 1 | 2 }>
+type SaveData = Partial<{ placed: Record<string, { item: Item; x: number; y: number }>; gold: number; steelBars: number; storedGold: number; storedSteelBars: number; phase: '낮' | '황혼' | '밤'; day: number; timeLeft: number; baseHp: number; productionQueue: Production[]; buildingLevels: Record<string, number>; baseUpgrades: Record<string, number>; supplyUpgrades: Record<'discount' | 'yield', number>; buildingHp: Record<string, number>; purchased: string[]; kills: number; emergencyRepairDay: number | null; emergencyUses: Record<string, number>; completedGoals: string[]; unitPriorities: Record<'warrior' | 'archer', UnitPriority>; trainingDoctrine: TrainingDoctrine; gameSpeed: 1 | 2 }>
 function loadSave(): SaveData {
   try { const value = JSON.parse(window.localStorage.getItem(SAVE_KEY) ?? '{}'); return value && typeof value === 'object' ? value : {} } catch { return {} }
 }
@@ -104,6 +108,8 @@ function App() {
   const [emergencyAction, setEmergencyAction] = useState<EmergencyAction>(null)
   const [emergencyUses, setEmergencyUses] = useState<Record<string, number>>(saved.emergencyUses ?? {})
   const [completedGoals, setCompletedGoals] = useState<string[]>(saved.completedGoals ?? [])
+  const [unitPriorities, setUnitPriorities] = useState<Record<'warrior' | 'archer', UnitPriority>>(saved.unitPriorities ?? { warrior: 'sapper', archer: 'boss' })
+  const [trainingDoctrine, setTrainingDoctrine] = useState<TrainingDoctrine>(saved.trainingDoctrine ?? null)
   const [tutorialStep, setTutorialStep] = useState(() => Number(window.localStorage.getItem('last-stand-tutorial-step') ?? 0))
   const killsRef = useRef(0)
   const nightStartKillsRef = useRef(0)
@@ -119,6 +125,7 @@ function App() {
   const economyLevel = baseUpgrades.economy ?? 0
   const fortifyLevel = baseUpgrades.fortify ?? 0
   const commandLevel = baseUpgrades.command ?? 0
+  const steelLevel = baseUpgrades.steel ?? 0
   const baseMaxHp = 100 + fortifyLevel * 20
   const queueCapacity = 8 + commandLevel * 2
   const canPrepare = phase !== '밤' && !gameOver
@@ -129,6 +136,8 @@ function App() {
   const unitDamageMultiplier = 1 + (trainingLevel - 1) * .05 + (purchased.includes('sharp') ? .1 : 0)
   const warriorHpMultiplier = purchased.includes('guard') ? 1.2 : 1
   const archerRangeBonus = purchased.includes('focus') ? 1 : 0
+  const warriorBlockBonus = trainingDoctrine === 'vanguard' ? 1 : 0
+  const archerAttackSpeedMultiplier = trainingDoctrine === 'ranger' ? .75 : 1
   const workshopLevel = getBuildingLevel('workshop')
   const infirmaryLevel = getBuildingLevel('infirmary')
   const supplyDiscountLevel = supplyUpgrades.discount
@@ -140,19 +149,19 @@ function App() {
   const isGoalDone = activeGoal ? completedGoals.includes(activeGoal.id) : false
 
   useLayoutEffect(() => {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, gameSpeed }))
-  }, [placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, gameSpeed])
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, unitPriorities, trainingDoctrine, gameSpeed }))
+  }, [placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, unitPriorities, trainingDoctrine, gameSpeed])
 
   useEffect(() => {
     let seconds = 0
     const income = window.setInterval(() => {
       seconds += 1
       setStoredGold((value) => value + 1 + (seconds % 4 === 0 ? economyLevel + supplyYieldLevel : 0))
-      const steelCycle = Math.max(5, 8 - Math.floor(economyLevel / 2))
+      const steelCycle = Math.max(3, 8 - Math.floor(economyLevel / 2) - steelLevel)
       if (seconds % steelCycle === 0) setStoredSteelBars((value) => value + 1)
     }, 1000)
     return () => window.clearInterval(income)
-  }, [economyLevel, supplyYieldLevel])
+  }, [economyLevel, supplyYieldLevel, steelLevel])
 
   useEffect(() => {
     // On restore, previousPhaseRef already equals phase. This also makes Strict Mode's extra effect pass harmless.
@@ -483,7 +492,8 @@ function App() {
   const getBaseUpgradePreview = (id: string, level: number) => {
     if (id === 'economy') return `골드 +${(level * .25).toFixed(2)}/초 → +${((level + 1) * .25).toFixed(2)}/초`
     if (id === 'fortify') return `본진 최대 체력 ${100 + level * 20} → ${100 + (level + 1) * 20}`
-    return `대기열 ${8 + level * 2} → ${10 + level * 2} · 생산 시간 -${level * 10}% → -${Math.min(40, (level + 1) * 10)}%`
+    if (id === 'command') return `대기열 ${8 + level * 2} → ${10 + level * 2} · 생산 시간 -${level * 10}% → -${Math.min(40, (level + 1) * 10)}%`
+    return `철근 생산 ${Math.max(3, 8 - Math.floor(economyLevel / 2) - level)}초 → ${Math.max(3, 8 - Math.floor(economyLevel / 2) - level - 1)}초`
   }
 
   const getSupplyPreview = (track: 'discount' | 'yield') => {
@@ -491,6 +501,15 @@ function App() {
     return track === 'discount'
       ? `고용 비용 -${Math.min(25, level * 5)}% → -${Math.min(25, (level + 1) * 5)}%`
       : `보급 생산 +${level}/4초 → +${level + 1}/4초`
+  }
+
+  function chooseDoctrine(doctrine: Exclude<TrainingDoctrine, null>) {
+    if (!canPrepare) { setNotice('밤에는 전술 교리를 선택할 수 없습니다.'); return }
+    if (trainingDoctrine) { setNotice('전술 교리는 이미 선택했습니다.'); return }
+    if (gold < 90) { setNotice('전술 교리 선택에는 골드 90이 필요합니다.'); return }
+    setGold((current) => current - 90)
+    setTrainingDoctrine(doctrine)
+    setNotice(doctrine === 'vanguard' ? '전술 교리: 전위대 — 검사 저지 수 +1' : '전술 교리: 사수대 — 궁수 공격 속도 +25%')
   }
 
   function buyUpgrade(id: string, cost: number) {
@@ -522,7 +541,7 @@ function App() {
       </section>
 
       <section className="battlefield" aria-label="8방향 본진 지도">
-        <BattlefieldCanvas placed={placed} selected={selected} preview={dragging} previewCursor={dragCursor} phase={phase} day={day} isGameOver={gameOver} gameSpeed={gameSpeed} isPaused={isPaused} emergencyAction={emergencyAction} buildingHp={buildingHp} trainingLevel={trainingLevel} unitDamageMultiplier={unitDamageMultiplier} warriorHpMultiplier={warriorHpMultiplier} archerRangeBonus={archerRangeBonus} workshopLevel={workshopLevel} infirmaryLevel={infirmaryLevel} onMapClick={place} onTurretSlotClick={placeTurret} onEntityDestroyed={handleEntityDestroyed} onEntityClick={handlePlacedClick} onCoreClick={handleCoreClick} onBaseDamaged={handleBaseDamaged} onEnemyDefeated={handleEnemyDefeated} onBuildingHpChange={handleBuildingHpChange} />
+        <BattlefieldCanvas placed={placed} selected={selected} preview={dragging} previewCursor={dragCursor} phase={phase} day={day} isGameOver={gameOver} gameSpeed={gameSpeed} isPaused={isPaused} emergencyAction={emergencyAction} buildingHp={buildingHp} trainingLevel={trainingLevel} unitDamageMultiplier={unitDamageMultiplier} warriorHpMultiplier={warriorHpMultiplier} archerRangeBonus={archerRangeBonus} unitPriorities={unitPriorities} warriorBlockBonus={warriorBlockBonus} archerAttackSpeedMultiplier={archerAttackSpeedMultiplier} workshopLevel={workshopLevel} infirmaryLevel={infirmaryLevel} onMapClick={place} onTurretSlotClick={placeTurret} onEntityDestroyed={handleEntityDestroyed} onEntityClick={handlePlacedClick} onCoreClick={handleCoreClick} onBaseDamaged={handleBaseDamaged} onEnemyDefeated={handleEnemyDefeated} onBuildingHpChange={handleBuildingHpChange} />
       </section>
 
       <p className="notice">{notice}</p>
@@ -537,6 +556,7 @@ function App() {
 
         <section className="build-panel">
           {tab === 'resource' && <div className="upgrade-guide"><span>🏕️</span><div><b>기지 자원 비축</b><p>코인 {storedGold} · 철근 {storedSteelBars}<br />결손 체력 20당 철근 1개</p></div><button onClick={collectBaseResources}>자원 회수</button><button onClick={repairBase} disabled={baseHp >= baseMaxHp || (phase === '밤' && emergencyRepairDay === day)}>🔩 {getBaseRepairCost()} 완전 수리</button></div>}
+          {tab === 'unit' && <div className="unit-tactics"><b>🎯 전술 우선순위</b><small>검사</small>{(['normal', 'sapper', 'boss'] as UnitPriority[]).map((priority) => <button key={`w-${priority}`} className={unitPriorities.warrior === priority ? 'active' : ''} onClick={() => setUnitPriorities((current) => ({ ...current, warrior: priority }))}>{priority === 'normal' ? '일반' : priority === 'sapper' ? '공병' : '보스'}</button>)}<small>궁수</small>{(['normal', 'sapper', 'boss'] as UnitPriority[]).map((priority) => <button key={`a-${priority}`} className={unitPriorities.archer === priority ? 'active' : ''} onClick={() => setUnitPriorities((current) => ({ ...current, archer: priority }))}>{priority === 'normal' ? '일반' : priority === 'sapper' ? '공병' : '보스'}</button>)}</div>}
           {tab === 'unit' && tabItems.map((item) => (
             <button key={item.id} onClick={() => startUnitProduction(item)} disabled={!canPrepare} className="build-card">
               <span className="card-icon">{item.icon}</span><span className="card-copy"><b>{item.name}</b><small>{item.id === 'warrior' ? '4초 후 2명 생성' : '5초 후 1명 생성'}</small></span><span className="cost">🪙 {getUnitCost(item)}</span>
@@ -566,7 +586,7 @@ function App() {
       {modal && <div className="modal-backdrop" onClick={() => setModal(null)}><section className="research-modal" onClick={(event) => event.stopPropagation()}>
         <button className="close" onClick={() => setModal(null)}>×</button><span className="modal-icon">{modal.item.icon}</span><p className="eyebrow">LV. {buildingLevels[modal.id] ?? 1} · 체력 {buildingHp[modal.id] ?? 100}/100</p><h1>{modal.item.name}</h1><p className="modal-description">{modal.item.sub}<br /><b>현재: {getBuildingEffectText(modal.item, buildingLevels[modal.id] ?? 1)}</b>{modal.item.id !== 'supply' && <><br /><b className="upgrade-preview">다음: {getBuildingEffectText(modal.item, (buildingLevels[modal.id] ?? 1) + 1)}</b></>}</p>
         {modal.item.id === 'supply' ? <div className="supply-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 완전 수리</button><button onClick={() => buySupplyUpgrade('discount')} disabled={!canPrepare}>🪙 비용 절감 Lv.{supplyDiscountLevel}<small>{getSupplyPreview('discount')}<br />비용 {Math.ceil(55 * 1.25 ** supplyDiscountLevel)}</small></button><button onClick={() => buySupplyUpgrade('yield')} disabled={!canPrepare}>🪙 생산량 증가 Lv.{supplyYieldLevel}<small>{getSupplyPreview('yield')}<br />비용 {Math.ceil(55 * 1.25 ** supplyYieldLevel)}</small></button></div> : <div className="building-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 완전 수리</button><button onClick={upgradeBuilding} disabled={!canPrepare}>🪙 다음 레벨 {Math.ceil(modal.item.cost * 0.55 * 1.18 ** ((buildingLevels[modal.id] ?? 1) - 1))}</button></div>}
-        {modal.item.id === 'training' && <div className="research-list">{upgrades.map((upgrade) => <article key={upgrade.id} className={purchased.includes(upgrade.id) ? 'done' : ''}><div><b>{upgrade.name}</b><span>{upgrade.text}</span></div><button disabled={purchased.includes(upgrade.id) || !canPrepare} onClick={() => buyUpgrade(upgrade.id, upgrade.cost)}>{purchased.includes(upgrade.id) ? '완료' : `🪙 ${upgrade.cost}`}</button></article>)}</div>}
+        {modal.item.id === 'training' && <div className="research-list"><article className={trainingDoctrine ? 'done' : ''}><div><b>전술 교리 · 1회 선택</b><span>전위대: 검사 저지 수 +1 / 사수대: 궁수 공격 속도 +25%</span></div><button disabled={!canPrepare || Boolean(trainingDoctrine)} onClick={() => chooseDoctrine('vanguard')}>{trainingDoctrine === 'vanguard' ? '전위대 완료' : trainingDoctrine ? '선택 완료' : '전위대 🪙90'}</button><button disabled={!canPrepare || Boolean(trainingDoctrine)} onClick={() => chooseDoctrine('ranger')}>{trainingDoctrine === 'ranger' ? '사수대 완료' : trainingDoctrine ? '선택 완료' : '사수대 🪙90'}</button></article>{upgrades.map((upgrade) => <article key={upgrade.id} className={purchased.includes(upgrade.id) ? 'done' : ''}><div><b>{upgrade.name}</b><span>{upgrade.text}</span></div><button disabled={purchased.includes(upgrade.id) || !canPrepare} onClick={() => buyUpgrade(upgrade.id, upgrade.cost)}>{purchased.includes(upgrade.id) ? '완료' : `🪙 ${upgrade.cost}`}</button></article>)}</div>}
       </section></div>}
       {nightReport && <div className="modal-backdrop night-report"><section className="research-modal"><span className="modal-icon">🌅</span><p className="eyebrow">DAY {String(nightReport.day).padStart(2, '0')} NIGHT REPORT</p><h1>생존 성공</h1><p className="modal-description">이번 밤 처치: <b>{nightReport.kills}마리</b> · 전투 보상: <b>🪙 {nightReport.reward}</b><br />파괴된 시설/유닛: <b>{nightReport.losses}</b><br /><b>추천:</b> {nightReport.tip}</p><button className="report-close" onClick={() => setNightReport(null)}>계속하기</button></section></div>}
       {gameOver && <div className="game-over"><div><span>☠️</span><p>최후의 거점 함락</p><h1>DAY {String(day).padStart(2, '0')}</h1><small>처치 {kills}마리 · 최고 기록 DAY {Math.max(highScore, day)}</small><button onClick={() => { window.localStorage.removeItem(SAVE_KEY); window.location.reload() }}>다시 생존하기</button></div></div>}

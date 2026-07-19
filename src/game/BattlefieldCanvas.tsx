@@ -35,6 +35,9 @@ type Props = {
   unitDamageMultiplier: number
   warriorHpMultiplier: number
   archerRangeBonus: number
+  unitPriorities: Record<'warrior' | 'archer', 'normal' | 'sapper' | 'boss'>
+  warriorBlockBonus: number
+  archerAttackSpeedMultiplier: number
   workshopLevel: number
   infirmaryLevel: number
   onMapClick: (x: number, y: number, itemId?: string) => void
@@ -61,12 +64,12 @@ const BUILDING_SLOTS = [
 ]
 type HealthBar = { back: Phaser.GameObjects.Rectangle; fill: Phaser.GameObjects.Rectangle; width: number }
 type EnemyRole = 'normal' | 'runner' | 'brute' | 'sapper' | 'boss'
-type ActiveEnemy = { sprite: Phaser.GameObjects.Text; roleTag: Phaser.GameObjects.Text; detection: Phaser.GameObjects.Arc; hp: number; maxHp: number; speed: number; damage: number; reward: number; isBoss: boolean; role: EnemyRole; bar: HealthBar; assignedUnits: number; blocker: ActiveUnit | null; nextAttackAt: number }
+type ActiveEnemy = { sprite: Phaser.GameObjects.Text; roleTag: Phaser.GameObjects.Text; detection: Phaser.GameObjects.Arc; hp: number; maxHp: number; speed: number; slowUntil: number; damage: number; reward: number; isBoss: boolean; role: EnemyRole; bar: HealthBar; assignedUnits: number; blocker: ActiveUnit | null; nextAttackAt: number }
 type ActiveUnit = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Container; homeX: number; homeY: number; hp: number; maxHp: number; bar: HealthBar; damage: number; attackInterval: number; moveSpeed: number; blockCount: number; engagedEnemies: number; nextAttackAt: number; target: ActiveEnemy | null }
 type ActiveTurret = { item: CanvasItem; sprite: Phaser.GameObjects.Container; direction: Phaser.Math.Vector2; hp: number; maxHp: number; bar: HealthBar; nextAttackAt: number }
 type ActiveBuilding = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Container; warning: Phaser.GameObjects.Text; hp: number; maxHp: number; bar: HealthBar }
 
-export function BattlefieldCanvas({ placed, selected, preview, previewCursor, phase, day, isGameOver, gameSpeed, isPaused, emergencyAction, buildingHp, trainingLevel, unitDamageMultiplier, warriorHpMultiplier, archerRangeBonus, workshopLevel, infirmaryLevel, onMapClick, onTurretSlotClick, onEntityDestroyed, onEntityClick, onCoreClick, onBaseDamaged, onEnemyDefeated, onBuildingHpChange }: Props) {
+export function BattlefieldCanvas({ placed, selected, preview, previewCursor, phase, day, isGameOver, gameSpeed, isPaused, emergencyAction, buildingHp, trainingLevel, unitDamageMultiplier, warriorHpMultiplier, archerRangeBonus, unitPriorities, warriorBlockBonus, archerAttackSpeedMultiplier, workshopLevel, infirmaryLevel, onMapClick, onTurretSlotClick, onEntityDestroyed, onEntityClick, onCoreClick, onBaseDamaged, onEnemyDefeated, onBuildingHpChange }: Props) {
   const parent = useRef<HTMLDivElement>(null)
   const onMapClickRef = useRef(onMapClick)
   const onEntityClickRef = useRef(onEntityClick)
@@ -82,6 +85,9 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
   const unitDamageMultiplierRef = useRef(unitDamageMultiplier)
   const warriorHpMultiplierRef = useRef(warriorHpMultiplier)
   const archerRangeBonusRef = useRef(archerRangeBonus)
+  const unitPrioritiesRef = useRef(unitPriorities)
+  const warriorBlockBonusRef = useRef(warriorBlockBonus)
+  const archerAttackSpeedMultiplierRef = useRef(archerAttackSpeedMultiplier)
   const workshopLevelRef = useRef(workshopLevel)
   const infirmaryLevelRef = useRef(infirmaryLevel)
   const dayRef = useRef(day)
@@ -113,6 +119,9 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
   useEffect(() => { unitDamageMultiplierRef.current = unitDamageMultiplier }, [unitDamageMultiplier])
   useEffect(() => { warriorHpMultiplierRef.current = warriorHpMultiplier }, [warriorHpMultiplier])
   useEffect(() => { archerRangeBonusRef.current = archerRangeBonus }, [archerRangeBonus])
+  useEffect(() => { unitPrioritiesRef.current = unitPriorities }, [unitPriorities])
+  useEffect(() => { warriorBlockBonusRef.current = warriorBlockBonus }, [warriorBlockBonus])
+  useEffect(() => { archerAttackSpeedMultiplierRef.current = archerAttackSpeedMultiplier }, [archerAttackSpeedMultiplier])
   useEffect(() => { workshopLevelRef.current = workshopLevel }, [workshopLevel])
   useEffect(() => { infirmaryLevelRef.current = infirmaryLevel }, [infirmaryLevel])
   useEffect(() => { dayRef.current = day }, [day])
@@ -323,7 +332,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         sprite.on('pointerdown', () => onEntityClickRef.current(id, item))
         const bar = this.createHealthBar(x, y - 34)
         this.placedObjects.push(bar.back, bar.fill)
-        if (item.kind === 'unit') { const maxHp = (item.maxHp ?? 8) * (item.id === 'warrior' ? warriorHpMultiplierRef.current : 1); this.units.push({ id, item, sprite, homeX: x, homeY: y, hp: maxHp, maxHp, bar, damage: item.damage ?? 1, attackInterval: item.attackInterval ?? 600, moveSpeed: item.moveSpeed ?? .16, blockCount: item.blockCount ?? 1, engagedEnemies: 0, nextAttackAt: 0, target: null }) }
+        if (item.kind === 'unit') { const maxHp = (item.maxHp ?? 8) * (item.id === 'warrior' ? warriorHpMultiplierRef.current : 1); this.units.push({ id, item, sprite, homeX: x, homeY: y, hp: maxHp, maxHp, bar, damage: item.damage ?? 1, attackInterval: (item.attackInterval ?? 600) * (item.id === 'archer' ? archerAttackSpeedMultiplierRef.current : 1), moveSpeed: item.moveSpeed ?? .16, blockCount: (item.blockCount ?? 1) + (item.id === 'warrior' ? warriorBlockBonusRef.current : 0), engagedEnemies: 0, nextAttackAt: 0, target: null }) }
         if (item.kind === 'turret') { const direction = new Phaser.Math.Vector2(x - CENTER, y - CENTER).normalize(); this.turrets.push({ item, sprite, direction, hp: 12, maxHp: 12, bar, nextAttackAt: 0 }) }
         if (item.kind === 'building') { const warning = this.add.text(0, -35, '⚠', { fontSize: '14px', color: '#ff8077' }).setOrigin(.5).setVisible(false); sprite.add(warning); const hp = buildingHpRef.current[id] ?? 100; this.buildings.push({ id, item, sprite, warning, hp, maxHp: 100, bar }) }
       }
@@ -358,7 +367,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
           const baseDamage = 1 + Math.floor((level - 1) / 3)
           const maxHp = (2 + level * 2) * profile.hp
           const bar = this.createHealthBar(x, y - 22, forced === 'boss' ? 52 : 30)
-          const activeEnemy: ActiveEnemy = { sprite: enemy, detection, hp: maxHp, maxHp, speed: (.048 + Math.min(level, 15) * .003) * profile.speed, damage: baseDamage * profile.damage, reward: profile.reward, isBoss: forced === 'boss', role: profile.role, roleTag, bar, assignedUnits: 0, blocker: null, nextAttackAt: 0 }
+          const activeEnemy: ActiveEnemy = { sprite: enemy, detection, hp: maxHp, maxHp, speed: (.048 + Math.min(level, 15) * .003) * profile.speed, damage: baseDamage * profile.damage, reward: profile.reward, isBoss: forced === 'boss', role: profile.role, roleTag, bar, assignedUnits: 0, blocker: null, nextAttackAt: 0, slowUntil: 0 }
           this.enemies.push(activeEnemy)
           if (activeEnemy.isBoss) this.showBossBar(activeEnemy)
           // Movement is controlled by updateEnemy so target priorities can change in real time.
@@ -456,7 +465,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         const candidate = this.enemies
           .filter((enemy) => enemy.sprite.active)
           .map((enemy) => ({ enemy, distance: Phaser.Math.Distance.Between(unit.sprite.x, unit.sprite.y, enemy.sprite.x, enemy.sprite.y) }))
-          .sort((a, b) => a.enemy.assignedUnits - b.enemy.assignedUnits || a.distance - b.distance)[0]?.enemy ?? null
+          .sort((a, b) => { const priority = unitPrioritiesRef.current[unit.item.id === 'warrior' ? 'warrior' : 'archer']; const aPriority = a.enemy.role === priority ? 0 : 1; const bPriority = b.enemy.role === priority ? 0 : 1; return aPriority - bPriority || a.enemy.assignedUnits - b.enemy.assignedUnits || a.distance - b.distance })[0]?.enemy ?? null
         if (candidate) candidate.assignedUnits += 1
         return candidate
       }
@@ -525,6 +534,16 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
             this.tweens.add({ targets: turret.sprite, scaleX: 1.22, scaleY: 1.22, duration: 110, yoyo: true })
             return
           }
+          if (turret.item.id === 'frost-tower') {
+            turret.nextAttackAt = time + Math.max(650, 950 - (workshopLevelRef.current - 1) * 45)
+            const target = targets[0].enemy
+            this.launchArrow(turret.sprite.x, turret.sprite.y - 8, target, 0x8de8ff)
+            target.hp -= .65 + (workshopLevelRef.current - 1) * .15
+            target.slowUntil = time + 1300
+            this.tweens.add({ targets: target.sprite, alpha: .45, duration: 90, yoyo: true })
+            if (target.hp <= 0) this.defeatEnemy(target)
+            return
+          }
           turret.nextAttackAt = time + Math.max(280, 450 - (workshopLevelRef.current - 1) * 20)
           this.launchArrow(turret.sprite.x, turret.sprite.y - 8, targets[0].enemy)
           targets[0].enemy.hp -= 1 + (workshopLevelRef.current - 1) * .25
@@ -572,7 +591,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         const targetRange = unitTarget || turretTarget || resolvedBuildingTarget ? 29 : LAST_STAND_RING_RADIUS
         const distance = Phaser.Math.Distance.Between(enemy.sprite.x, enemy.sprite.y, targetX, targetY)
         if (distance > targetRange) {
-          this.moveTextToward(enemy.sprite, targetX, targetY, delta, enemy.speed)
+          this.moveTextToward(enemy.sprite, targetX, targetY, delta, enemy.speed * (time < enemy.slowUntil ? .55 : 1))
           return
         }
         if (time < enemy.nextAttackAt) return
