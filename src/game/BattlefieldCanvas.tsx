@@ -46,6 +46,7 @@ type Props = {
   nightThreat: number
   threatStatus: '위험' | '경계' | '안정'
   threatEnemies: string
+  nightPacing: 'relief' | 'standard' | 'pressure'
   onMapClick: (x: number, y: number, itemId?: string) => void
   onTurretSlotClick: (x: number, y: number) => void
   onEntityDestroyed: (id: string, name: string, item: CanvasItem) => void
@@ -75,7 +76,7 @@ type ActiveUnit = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Con
 type ActiveTurret = { item: CanvasItem; sprite: Phaser.GameObjects.Container; direction: Phaser.Math.Vector2; hp: number; maxHp: number; bar: HealthBar; nextAttackAt: number }
 type ActiveBuilding = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Container; warning: Phaser.GameObjects.Text; hp: number; maxHp: number; bar: HealthBar }
 
-export function BattlefieldCanvas({ placed, selected, preview, previewCursor, phase, day, isGameOver, gameSpeed, isPaused, emergencyAction, buildingHp, trainingLevel, unitDamageMultiplier, warriorHpMultiplier, archerRangeBonus, warriorBlockBonus, archerAttackSpeedMultiplier, workshopLevel, infirmaryLevel, combatPower, nightThreat, threatStatus, threatEnemies, onMapClick, onTurretSlotClick, onEntityDestroyed, onEntityClick, onCoreClick, onBaseDamaged, onEnemyDefeated, onBuildingHpChange }: Props) {
+export function BattlefieldCanvas({ placed, selected, preview, previewCursor, phase, day, isGameOver, gameSpeed, isPaused, emergencyAction, buildingHp, trainingLevel, unitDamageMultiplier, warriorHpMultiplier, archerRangeBonus, warriorBlockBonus, archerAttackSpeedMultiplier, workshopLevel, infirmaryLevel, combatPower, nightThreat, threatStatus, threatEnemies, nightPacing, onMapClick, onTurretSlotClick, onEntityDestroyed, onEntityClick, onCoreClick, onBaseDamaged, onEnemyDefeated, onBuildingHpChange }: Props) {
   const parent = useRef<HTMLDivElement>(null)
   const onMapClickRef = useRef(onMapClick)
   const onEntityClickRef = useRef(onEntityClick)
@@ -99,6 +100,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
   const nightThreatRef = useRef(nightThreat)
   const threatStatusRef = useRef(threatStatus)
   const threatEnemiesRef = useRef(threatEnemies)
+  const nightPacingRef = useRef(nightPacing)
   const dayRef = useRef(day)
   const gameOverRef = useRef(isGameOver)
   const gameSpeedRef = useRef(gameSpeed)
@@ -136,6 +138,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
   useEffect(() => { nightThreatRef.current = nightThreat }, [nightThreat])
   useEffect(() => { threatStatusRef.current = threatStatus }, [threatStatus])
   useEffect(() => { threatEnemiesRef.current = threatEnemies }, [threatEnemies])
+  useEffect(() => { nightPacingRef.current = nightPacing }, [nightPacing])
   useEffect(() => { dayRef.current = day }, [day])
   useEffect(() => { gameOverRef.current = isGameOver }, [isGameOver])
   useEffect(() => { gameSpeedRef.current = gameSpeed; isPausedRef.current = isPaused }, [gameSpeed, isPaused])
@@ -161,6 +164,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
       private buildings: ActiveBuilding[] = []
       private laneLabels: Phaser.GameObjects.Text[] = []
       private nextLaneUpdateAt = 0
+      private nextSpawnAt = 0
       private placedObjects: Phaser.GameObjects.GameObject[] = []
       private fieldBackground?: Phaser.GameObjects.Rectangle
       private atmosphere?: Phaser.GameObjects.Rectangle
@@ -226,7 +230,8 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         const status = threatStatusRef.current
         const color = status === '위험' ? '#ff9a89' : status === '안정' ? '#a8e99c' : '#ffe28b'
         const panel = this.add.rectangle(CENTER, CENTER - 245, 222, 74, 0x14242d, .93).setStrokeStyle(1, status === '위험' ? 0xdf756b : status === '안정' ? 0x84be78 : 0xe3bd67, .85)
-        const title = this.add.text(CENTER, CENTER - 270, `⚠ 밤의 습격 예보 · ${status}`, { fontFamily: 'sans-serif', fontStyle: 'bold', fontSize: '11px', color }).setOrigin(.5)
+        const pacingLabel = nightPacingRef.current === 'relief' ? '완화' : nightPacingRef.current === 'pressure' ? '압박' : '표준'
+        const title = this.add.text(CENTER, CENTER - 270, `⚠ 밤의 습격 예보 · ${status} · ${pacingLabel}`, { fontFamily: 'sans-serif', fontStyle: 'bold', fontSize: '11px', color }).setOrigin(.5)
         const power = this.add.text(CENTER, CENTER - 250, `아군 전투력 ${combatPowerRef.current}  /  위협도 ${nightThreatRef.current}`, { fontFamily: 'sans-serif', fontSize: '11px', color: '#f3eccb' }).setOrigin(.5)
         const enemies = this.add.text(CENTER, CENTER - 231, threatEnemiesRef.current, { fontFamily: 'sans-serif', fontSize: '8px', color: '#b7d0c2' }).setOrigin(.5)
         this.threatForecast = this.add.container(0, 0, [panel, title, power, enemies]).setDepth(15)
@@ -246,8 +251,10 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         if (nextPhase === '황혼') this.showThreatForecast()
         else { this.threatForecast?.destroy(); this.threatForecast = undefined }
         if (nextPhase === '밤' && previousPhase !== '밤') {
-          const initialWave = Math.min(8, 2 + dayRef.current)
+          const pacingShift = nightPacingRef.current === 'relief' ? -1 : nightPacingRef.current === 'pressure' ? 1 : 0
+          const initialWave = Math.max(1, Math.min(9, 2 + dayRef.current + pacingShift))
           for (let direction = 0; direction < initialWave; direction += 1) this.spawnEnemy(direction % 8, direction * 160)
+          this.nextSpawnAt = this.time.now + (nightPacingRef.current === 'relief' ? 2500 : nightPacingRef.current === 'pressure' ? 1650 : 2000)
           if (dayRef.current % 5 === 0) this.spawnEnemy(0, initialWave * 170, 'boss')
         }
         if (nextPhase === '낮' && previousPhase === '밤') {
@@ -364,8 +371,11 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
       }
 
       private startEnemyWaves() {
-        this.time.addEvent({ delay: 2000, loop: true, callback: () => {
-          if (this.currentPhase === '밤' && !gameOverRef.current) this.spawnEnemy(Phaser.Math.Between(0, 7))
+        this.time.addEvent({ delay: 250, loop: true, callback: () => {
+          if (this.currentPhase !== '밤' || gameOverRef.current || this.time.now < this.nextSpawnAt) return
+          const pacing = nightPacingRef.current
+          this.nextSpawnAt = this.time.now + (pacing === 'relief' ? 2500 : pacing === 'pressure' ? 1650 : 2000)
+          this.spawnEnemy(Phaser.Math.Between(0, 7))
         } })
       }
 
@@ -391,9 +401,10 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
           const roleTag = this.add.text(x, y + 17, roleName, { fontFamily: 'sans-serif', fontSize: '7px', color: profile.role === 'boss' ? '#ffd37f' : '#f3c6bb', backgroundColor: '#271d27bb', padding: { x: 3, y: 1 } }).setOrigin(.5)
           const detection = this.add.circle(x, y, 105, 0xef7777, .035).setStrokeStyle(1, 0xef7777, .35)
           const baseDamage = 1 + Math.floor((level - 1) / 3)
-          const maxHp = (2 + level * 2) * profile.hp
+          const pacingMultiplier = nightPacingRef.current === 'relief' ? .9 : nightPacingRef.current === 'pressure' ? 1.1 : 1
+          const maxHp = (2 + level * 2) * profile.hp * pacingMultiplier
           const bar = this.createHealthBar(x, y - 22, forced === 'boss' ? 52 : 30)
-          const activeEnemy: ActiveEnemy = { sprite: enemy, detection, hp: maxHp, maxHp, speed: (.048 + Math.min(level, 15) * .003) * profile.speed, damage: baseDamage * profile.damage, reward: profile.reward, isBoss: forced === 'boss', role: profile.role, roleTag, bar, assignedUnits: 0, blocker: null, nextAttackAt: 0, slowUntil: 0 }
+          const activeEnemy: ActiveEnemy = { sprite: enemy, detection, hp: maxHp, maxHp, speed: (.048 + Math.min(level, 15) * .003) * profile.speed, damage: baseDamage * profile.damage * (nightPacingRef.current === 'relief' ? .9 : nightPacingRef.current === 'pressure' ? 1.05 : 1), reward: profile.reward, isBoss: forced === 'boss', role: profile.role, roleTag, bar, assignedUnits: 0, blocker: null, nextAttackAt: 0, slowUntil: 0 }
           this.enemies.push(activeEnemy)
           if (activeEnemy.isBoss) this.showBossBar(activeEnemy)
           // Movement is controlled by updateEnemy so target priorities can change in real time.

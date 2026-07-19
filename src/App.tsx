@@ -160,7 +160,9 @@ function App() {
     const block = (item.blockCount ?? 1) + (item.id === 'warrior' ? warriorBlockBonus : 0)
     return total + hp * .55 + (item.damage ?? 0) * unitDamageMultiplier * attackRate * 10 + (item.range ?? 1) * 2 + block * 2
   }, 0) + fortifyLevel * 3)
-  const nightThreat = Math.round(18 + day * 7 + (day >= 4 ? 7 : 0) + (day >= 6 ? 10 : 0) + (day >= 8 ? 12 : 0) + (day % 5 === 0 ? 30 : 0))
+  const baseNightThreat = Math.round(18 + day * 7 + (day >= 4 ? 7 : 0) + (day >= 6 ? 10 : 0) + (day >= 8 ? 12 : 0) + (day % 5 === 0 ? 30 : 0))
+  const nightPacing = combatPower < baseNightThreat * .6 ? 'relief' : combatPower > baseNightThreat * 1.55 ? 'pressure' : 'standard'
+  const nightThreat = Math.round(baseNightThreat * (nightPacing === 'relief' ? .85 : nightPacing === 'pressure' ? 1.15 : 1))
   const threatStatus = combatPower < nightThreat * .8 ? '위험' : combatPower > nightThreat * 1.2 ? '안정' : '경계'
   const threatEnemies = `${day >= 8 ? '공병 · ' : ''}${day >= 6 ? '파괴병 · ' : ''}${day >= 4 ? '돌진병 · ' : ''}일반 좀비${day % 5 === 0 ? ' · 보스' : ''}`
   const activeGoal = DAY_GOALS[day]
@@ -561,7 +563,7 @@ function App() {
       </section>
 
       <section className="battlefield" aria-label="8방향 본진 지도">
-        <BattlefieldCanvas placed={placed} selected={selected} preview={dragging} previewCursor={dragCursor} phase={phase} day={day} isGameOver={gameOver} gameSpeed={gameSpeed} isPaused={isPaused} emergencyAction={emergencyAction} buildingHp={buildingHp} trainingLevel={trainingLevel} unitDamageMultiplier={unitDamageMultiplier} warriorHpMultiplier={warriorHpMultiplier} archerRangeBonus={archerRangeBonus} warriorBlockBonus={warriorBlockBonus} archerAttackSpeedMultiplier={archerAttackSpeedMultiplier} workshopLevel={workshopLevel} infirmaryLevel={infirmaryLevel} combatPower={combatPower} nightThreat={nightThreat} threatStatus={threatStatus} threatEnemies={threatEnemies} onMapClick={place} onTurretSlotClick={placeTurret} onEntityDestroyed={handleEntityDestroyed} onEntityClick={handlePlacedClick} onCoreClick={handleCoreClick} onBaseDamaged={handleBaseDamaged} onEnemyDefeated={handleEnemyDefeated} onBuildingHpChange={handleBuildingHpChange} />
+        <BattlefieldCanvas placed={placed} selected={selected} preview={dragging} previewCursor={dragCursor} phase={phase} day={day} isGameOver={gameOver} gameSpeed={gameSpeed} isPaused={isPaused} emergencyAction={emergencyAction} buildingHp={buildingHp} trainingLevel={trainingLevel} unitDamageMultiplier={unitDamageMultiplier} warriorHpMultiplier={warriorHpMultiplier} archerRangeBonus={archerRangeBonus} warriorBlockBonus={warriorBlockBonus} archerAttackSpeedMultiplier={archerAttackSpeedMultiplier} workshopLevel={workshopLevel} infirmaryLevel={infirmaryLevel} combatPower={combatPower} nightThreat={nightThreat} threatStatus={threatStatus} threatEnemies={threatEnemies} nightPacing={nightPacing} onMapClick={place} onTurretSlotClick={placeTurret} onEntityDestroyed={handleEntityDestroyed} onEntityClick={handlePlacedClick} onCoreClick={handleCoreClick} onBaseDamaged={handleBaseDamaged} onEnemyDefeated={handleEnemyDefeated} onBuildingHpChange={handleBuildingHpChange} />
       </section>
 
       <p className="notice">{notice}</p>
