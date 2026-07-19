@@ -62,7 +62,7 @@ const BUILDING_SLOTS = [
 type HealthBar = { back: Phaser.GameObjects.Rectangle; fill: Phaser.GameObjects.Rectangle; width: number }
 type EnemyRole = 'normal' | 'runner' | 'brute' | 'sapper' | 'boss'
 type ActiveEnemy = { sprite: Phaser.GameObjects.Text; detection: Phaser.GameObjects.Arc; hp: number; maxHp: number; speed: number; damage: number; reward: number; isBoss: boolean; role: EnemyRole; bar: HealthBar; assignedUnits: number; blocker: ActiveUnit | null; nextAttackAt: number }
-type ActiveUnit = { item: CanvasItem; sprite: Phaser.GameObjects.Container; homeX: number; homeY: number; hp: number; maxHp: number; bar: HealthBar; damage: number; attackInterval: number; moveSpeed: number; blockCount: number; engagedEnemies: number; nextAttackAt: number; target: ActiveEnemy | null }
+type ActiveUnit = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Container; homeX: number; homeY: number; hp: number; maxHp: number; bar: HealthBar; damage: number; attackInterval: number; moveSpeed: number; blockCount: number; engagedEnemies: number; nextAttackAt: number; target: ActiveEnemy | null }
 type ActiveTurret = { item: CanvasItem; sprite: Phaser.GameObjects.Container; direction: Phaser.Math.Vector2; hp: number; maxHp: number; bar: HealthBar; nextAttackAt: number }
 type ActiveBuilding = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Container; hp: number; maxHp: number; bar: HealthBar }
 
@@ -322,7 +322,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         sprite.on('pointerdown', () => onEntityClickRef.current(id, item))
         const bar = this.createHealthBar(x, y - 34)
         this.placedObjects.push(bar.back, bar.fill)
-        if (item.kind === 'unit') { const maxHp = (item.maxHp ?? 8) * (item.id === 'warrior' ? warriorHpMultiplierRef.current : 1); this.units.push({ item, sprite, homeX: x, homeY: y, hp: maxHp, maxHp, bar, damage: item.damage ?? 1, attackInterval: item.attackInterval ?? 600, moveSpeed: item.moveSpeed ?? .16, blockCount: item.blockCount ?? 1, engagedEnemies: 0, nextAttackAt: 0, target: null }) }
+        if (item.kind === 'unit') { const maxHp = (item.maxHp ?? 8) * (item.id === 'warrior' ? warriorHpMultiplierRef.current : 1); this.units.push({ id, item, sprite, homeX: x, homeY: y, hp: maxHp, maxHp, bar, damage: item.damage ?? 1, attackInterval: item.attackInterval ?? 600, moveSpeed: item.moveSpeed ?? .16, blockCount: item.blockCount ?? 1, engagedEnemies: 0, nextAttackAt: 0, target: null }) }
         if (item.kind === 'turret') { const direction = new Phaser.Math.Vector2(x - CENTER, y - CENTER).normalize(); this.turrets.push({ item, sprite, direction, hp: 12, maxHp: 12, bar, nextAttackAt: 0 }) }
         if (item.kind === 'building') { const hp = buildingHpRef.current[id] ?? 100; this.buildings.push({ id, item, sprite, hp, maxHp: 100, bar }) }
       }
@@ -440,6 +440,14 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         this.guideText?.setPosition(worldX, worldY - 18).setVisible(true)
       }
 
+      private launchArrow(sourceX: number, sourceY: number, target: ActiveEnemy, color = 0xf5df82) {
+        const targetX = target.sprite.x
+        const targetY = target.sprite.y
+        const projectile = this.add.rectangle(sourceX, sourceY, 11, 2, color, 1).setOrigin(.15, .5).setDepth(12)
+        projectile.setRotation(Phaser.Math.Angle.Between(sourceX, sourceY, targetX, targetY))
+        this.tweens.add({ targets: projectile, x: targetX, y: targetY, duration: Math.max(110, Math.min(260, Phaser.Math.Distance.Between(sourceX, sourceY, targetX, targetY) * .55)), ease: 'Linear', onComplete: () => projectile.destroy() })
+      }
+
       private assignTarget(unit: ActiveUnit) {
         const candidate = this.enemies
           .filter((enemy) => enemy.sprite.active)
@@ -466,6 +474,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
           if (unit.sprite.active) return true
           if (unit.target?.sprite.active) unit.target.assignedUnits = Math.max(0, unit.target.assignedUnits - 1)
           this.enemies.forEach((enemy) => { if (enemy.blocker === unit) enemy.blocker = null })
+          onEntityDestroyedRef.current(unit.id, unit.item.name, unit.item)
           return false
         })
         this.buildings = this.buildings.filter((building) => building.sprite.active)
@@ -489,6 +498,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
           }
           if (time >= unit.nextAttackAt) {
             unit.nextAttackAt = time + unit.attackInterval
+            if (unit.item.id === 'archer') this.launchArrow(unit.sprite.x, unit.sprite.y - 5, target, 0xa6e4ff)
             target.hp -= unit.damage * unitDamageMultiplierRef.current
             this.tweens.add({ targets: target.sprite, alpha: .35, duration: 80, yoyo: true })
             if (target.hp <= 0) this.defeatEnemy(target)
@@ -512,6 +522,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
             return
           }
           turret.nextAttackAt = time + Math.max(280, 450 - (workshopLevelRef.current - 1) * 20)
+          this.launchArrow(turret.sprite.x, turret.sprite.y - 8, targets[0].enemy)
           targets[0].enemy.hp -= 1 + (workshopLevelRef.current - 1) * .25
           this.tweens.add({ targets: targets[0].enemy.sprite, alpha: .3, duration: 75, yoyo: true })
           if (targets[0].enemy.hp <= 0) this.defeatEnemy(targets[0].enemy)

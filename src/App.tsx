@@ -125,6 +125,8 @@ function App() {
   const supplyDiscountLevel = supplyUpgrades.discount
   const supplyYieldLevel = supplyUpgrades.yield
   const getUnitCost = (item: Item) => Math.ceil(item.cost * (1 - Math.min(.25, supplyDiscountLevel * .05)))
+  const warriorCount = Object.values(placed).filter((entity) => entity.item.id === 'warrior').length
+  const archerCount = Object.values(placed).filter((entity) => entity.item.id === 'archer').length
 
   useEffect(() => {
     window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, gameSpeed }))
@@ -478,7 +480,7 @@ function App() {
       </header>
 
       <section className="resources" aria-label="자원">
-        <span>🪙 <b>{gold}</b></span><span>🔩 <b>{steelBars}</b></span><span>☠ <b>{kills}</b></span>
+        <span>🪙 <b>{gold}</b></span><span>🔩 <b>{steelBars}</b></span><span>⚔️ <b>{warriorCount}</b></span><span>🏹 <b>{archerCount}</b></span><span>☠ <b>{kills}</b></span>
         <small>기지 비축: 🪙 {storedGold} · 🔩 {storedSteelBars}</small>
       </section>
 
