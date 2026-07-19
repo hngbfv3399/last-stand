@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { BattlefieldCanvas } from './game/BattlefieldCanvas'
 import './App.css'
 
@@ -112,7 +112,6 @@ function App() {
   const [nightReport, setNightReport] = useState<{ day: number; kills: number; reward: number; losses: number; tip: string } | null>(null)
   const [highScore, setHighScore] = useState(() => Number(window.localStorage.getItem('last-stand-high-score') ?? 0))
   const previousPhaseRef = useRef(phase)
-  const phaseHasMountedRef = useRef(false)
   const production = productionQueue[0] ?? null
   const activeProductionId = production?.item.id
 
@@ -140,7 +139,7 @@ function App() {
   const activeGoal = DAY_GOALS[day]
   const isGoalDone = activeGoal ? completedGoals.includes(activeGoal.id) : false
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, gameSpeed }))
   }, [placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, gameSpeed])
 
@@ -156,15 +155,12 @@ function App() {
   }, [economyLevel, supplyYieldLevel])
 
   useEffect(() => {
-    if (!phaseHasMountedRef.current) {
-      phaseHasMountedRef.current = true
-      if (phase === '밤') nightStartKillsRef.current = killsRef.current
-      return
-    }
+    // On restore, previousPhaseRef already equals phase. This also makes Strict Mode's extra effect pass harmless.
+    if (previousPhaseRef.current === phase) return
     setTimeLeft(PHASE_SECONDS[phase])
     setEmergencyUses({})
     setEmergencyAction(null)
-    if (phase === '밤' && previousPhaseRef.current !== '밤') { nightStartKillsRef.current = killsRef.current; nightRewardRef.current = 0; nightDestroyedRef.current = 0 }
+    if (phase === '밤') { nightStartKillsRef.current = killsRef.current; nightRewardRef.current = 0; nightDestroyedRef.current = 0 }
     previousPhaseRef.current = phase
   }, [phase])
 
