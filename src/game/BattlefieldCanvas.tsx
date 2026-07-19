@@ -306,8 +306,9 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
 
       private updateHealthBar(bar: HealthBar, x: number, y: number, hp: number, maxHp: number) {
         const ratio = Math.max(0, Math.min(1, hp / maxHp))
+        const color = ratio > .6 ? 0x8fda72 : ratio > .3 ? 0xf0cf67 : 0xef6e67
         bar.back.setPosition(x, y)
-        bar.fill.setPosition(x - bar.width / 2, y).setDisplaySize(bar.width * ratio, 3)
+        bar.fill.setFillStyle(color).setPosition(x - bar.width / 2, y).setDisplaySize(bar.width * ratio, 3)
       }
 
       private drawEntity(id: string, entity: PlacedEntity) {

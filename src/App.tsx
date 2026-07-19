@@ -502,7 +502,7 @@ function App() {
           <span>{phase === '낮' ? '☀️' : phase === '황혼' ? '🌆' : '🌙'}</span>{phase} <b>{String(timeLeft).padStart(2, '0')}초</b>
           <div className="time-controls"><button onClick={() => setIsPaused((value) => !value)} aria-label={isPaused ? '계속' : '일시정지'}>{isPaused ? '▶' : 'Ⅱ'}</button><button onClick={() => setGameSpeed((value) => value === 1 ? 2 : 1)} aria-label="배속 변경">{gameSpeed}×</button></div>
         </div>
-        <div className="base-health"><span>본진</span><div><i style={{ width: `${baseHp / baseMaxHp * 100}%` }} /></div><b>{baseHp} / {baseMaxHp}</b></div>
+        <div className="base-health"><span>본진</span><div><i className={baseHp / baseMaxHp > .6 ? 'healthy' : baseHp / baseMaxHp > .3 ? 'caution' : 'critical'} style={{ width: `${baseHp / baseMaxHp * 100}%` }} /></div><b>{baseHp} / {baseMaxHp}</b></div>
       </header>
 
       <section className="resources" aria-label="자원">
