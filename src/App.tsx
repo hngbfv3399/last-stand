@@ -42,6 +42,13 @@ const upgrades = [
 
 const PHASE_SECONDS = { 낮: 60, 황혼: 10, 밤: 30 } as const
 
+const DAY_GOALS: Record<number, { id: string; action: 'unit' | 'turret' | 'manage' | 'boss'; label: string; detail: string; reward: number }> = {
+  1: { id: 'day-1-unit', action: 'unit', label: '유닛 생산', detail: '검사 또는 궁수를 생산 대기열에 넣으세요.', reward: 20 },
+  2: { id: 'day-2-turret', action: 'turret', label: '포탑 설치', detail: '본진 주변의 파란 슬롯에 포탑을 설치하세요.', reward: 25 },
+  3: { id: 'day-3-manage', action: 'manage', label: '건축물 관리', detail: '필드의 건축물을 눌러 관리 화면을 확인하세요.', reward: 25 },
+  5: { id: 'day-5-boss', action: 'boss', label: '첫 보스 격파', detail: '이번 밤에 출현하는 보스를 쓰러뜨리세요.', reward: 50 },
+}
+
 const BASE_UPGRADES = [
   { id: 'economy', icon: '⛏️', name: '자급자족', text: '골드 수입 +0.25/초 · 철근 생산 가속', baseCost: 70 },
   { id: 'fortify', icon: '🛡️', name: '거점 방어', text: '본진 최대 체력 +20 · 강화 시 체력 회복', baseCost: 85 },
@@ -58,7 +65,7 @@ const DEFAULT_PLACED: Record<string, { item: Item; x: number; y: number }> = {
   'training-initial': { item: items[4], x: 3820, y: 3820 }, 'workshop-initial': { item: items[5], x: 4180, y: 3820 },
   'infirmary-initial': { item: items[6], x: 3820, y: 4180 }, 'supply-initial': { item: items[7], x: 4180, y: 4180 },
 }
-type SaveData = Partial<{ placed: Record<string, { item: Item; x: number; y: number }>; gold: number; steelBars: number; storedGold: number; storedSteelBars: number; phase: '낮' | '황혼' | '밤'; day: number; timeLeft: number; baseHp: number; productionQueue: Production[]; buildingLevels: Record<string, number>; baseUpgrades: Record<string, number>; supplyUpgrades: Record<'discount' | 'yield', number>; buildingHp: Record<string, number>; purchased: string[]; kills: number; emergencyRepairDay: number | null; emergencyUses: Record<string, number>; gameSpeed: 1 | 2 }>
+type SaveData = Partial<{ placed: Record<string, { item: Item; x: number; y: number }>; gold: number; steelBars: number; storedGold: number; storedSteelBars: number; phase: '낮' | '황혼' | '밤'; day: number; timeLeft: number; baseHp: number; productionQueue: Production[]; buildingLevels: Record<string, number>; baseUpgrades: Record<string, number>; supplyUpgrades: Record<'discount' | 'yield', number>; buildingHp: Record<string, number>; purchased: string[]; kills: number; emergencyRepairDay: number | null; emergencyUses: Record<string, number>; completedGoals: string[]; gameSpeed: 1 | 2 }>
 function loadSave(): SaveData {
   try { const value = JSON.parse(window.localStorage.getItem(SAVE_KEY) ?? '{}'); return value && typeof value === 'object' ? value : {} } catch { return {} }
 }
@@ -96,10 +103,13 @@ function App() {
   const [showEmergencyGuide, setShowEmergencyGuide] = useState(false)
   const [emergencyAction, setEmergencyAction] = useState<EmergencyAction>(null)
   const [emergencyUses, setEmergencyUses] = useState<Record<string, number>>(saved.emergencyUses ?? {})
+  const [completedGoals, setCompletedGoals] = useState<string[]>(saved.completedGoals ?? [])
   const [tutorialStep, setTutorialStep] = useState(() => Number(window.localStorage.getItem('last-stand-tutorial-step') ?? 0))
   const killsRef = useRef(0)
   const nightStartKillsRef = useRef(0)
-  const [nightReport, setNightReport] = useState<{ day: number; kills: number } | null>(null)
+  const nightRewardRef = useRef(0)
+  const nightDestroyedRef = useRef(0)
+  const [nightReport, setNightReport] = useState<{ day: number; kills: number; reward: number; losses: number; tip: string } | null>(null)
   const [highScore, setHighScore] = useState(() => Number(window.localStorage.getItem('last-stand-high-score') ?? 0))
   const previousPhaseRef = useRef(phase)
   const phaseHasMountedRef = useRef(false)
@@ -127,10 +137,12 @@ function App() {
   const getUnitCost = (item: Item) => Math.ceil(item.cost * (1 - Math.min(.25, supplyDiscountLevel * .05)))
   const warriorCount = Object.values(placed).filter((entity) => entity.item.id === 'warrior').length
   const archerCount = Object.values(placed).filter((entity) => entity.item.id === 'archer').length
+  const activeGoal = DAY_GOALS[day]
+  const isGoalDone = activeGoal ? completedGoals.includes(activeGoal.id) : false
 
   useEffect(() => {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, gameSpeed }))
-  }, [placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, gameSpeed])
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, gameSpeed }))
+  }, [placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, emergencyUses, completedGoals, gameSpeed])
 
   useEffect(() => {
     let seconds = 0
@@ -152,7 +164,7 @@ function App() {
     setTimeLeft(PHASE_SECONDS[phase])
     setEmergencyUses({})
     setEmergencyAction(null)
-    if (phase === '밤' && previousPhaseRef.current !== '밤') nightStartKillsRef.current = killsRef.current
+    if (phase === '밤' && previousPhaseRef.current !== '밤') { nightStartKillsRef.current = killsRef.current; nightRewardRef.current = 0; nightDestroyedRef.current = 0 }
     previousPhaseRef.current = phase
   }, [phase])
 
@@ -177,12 +189,13 @@ function App() {
       return
     }
     const nightKills = killsRef.current - nightStartKillsRef.current
-    setNightReport({ day, kills: nightKills })
+    const tip = nightDestroyedRef.current > 0 ? '파괴된 시설을 재건하세요.' : baseHp < baseMaxHp * .65 ? '철근으로 본진을 수리하세요.' : warriorCount + archerCount < day + 2 ? '다음 밤을 위해 유닛을 보충하세요.' : '강화 또는 포탑으로 방어선을 보강하세요.'
+    setNightReport({ day, kills: nightKills, reward: nightRewardRef.current, losses: nightDestroyedRef.current, tip })
     setNotice('밤 생존 성공 · 처치 ' + nightKills + '마리')
     setTimeLeft(PHASE_SECONDS.낮)
     setDay((current) => current + 1)
     setPhase('낮')
-  }, [timeLeft, gameOver, phase, day])
+  }, [timeLeft, gameOver, phase, day, baseHp, baseMaxHp, warriorCount, archerCount])
 
   useEffect(() => {
     if (baseHp === 0) {
@@ -235,6 +248,13 @@ function App() {
     setDragCursor({ x: event.clientX, y: event.clientY })
   }
 
+  const completeDailyGoal = useCallback((action: 'unit' | 'turret' | 'manage' | 'boss') => {
+    if (!activeGoal || activeGoal.action !== action || completedGoals.includes(activeGoal.id)) return
+    setCompletedGoals((current) => [...current, activeGoal.id])
+    setGold((current) => current + activeGoal.reward)
+    setNotice(`목표 완료: ${activeGoal.label} · 코인 +${activeGoal.reward}`)
+  }, [activeGoal, completedGoals])
+
   function startUnitProduction(item: Item) {
     if (!canPrepare) { setNotice('밤에는 유닛 생산을 시작할 수 없습니다.'); return }
     const cost = getUnitCost(item)
@@ -242,6 +262,7 @@ function App() {
     if (productionQueue.length >= queueCapacity) { setNotice('생산 대기열이 가득 찼습니다. 거점 강화로 최대 수를 늘릴 수 있습니다.'); return }
     setGold((value) => value - cost)
     setProductionQueue((current) => [...current, { item, remaining: Math.max(2, Math.ceil((item.id === 'warrior' ? 4 : 5) * (1 - Math.min(.4, commandLevel * .1)))) }])
+    completeDailyGoal('unit')
     setNotice(`${item.name}을(를) 생산 대기열에 추가했습니다.`)
   }
 
@@ -314,10 +335,11 @@ function App() {
   const handlePlacedClick = useCallback((id: string, item: Item) => {
     if (item.kind === 'building') {
       setModal({ id, item })
+      completeDailyGoal('manage')
       setNotice(`${item.name} 관리 페이지를 열었습니다.`)
     }
     else setNotice(`${item.name}: ${item.sub}`)
-  }, [setNotice])
+  }, [completeDailyGoal])
 
   const handleCoreClick = useCallback(() => {
     setBasePanelOpen(true)
@@ -339,9 +361,10 @@ function App() {
       const { [id]: destroyed, ...remaining } = current
       return destroyed ? remaining : current
     })
+    if (phase === '밤') nightDestroyedRef.current += 1
     setNotice(`${name}이(가) 몬스터에게 파괴되었습니다. 건축물 탭에서 재건할 수 있습니다.`)
     if (item.kind === 'building') setTab('building')
-  }, [setNotice])
+  }, [phase])
 
   const handleBaseDamaged = useCallback((damage: number) => {
     if (gameOver) return
@@ -352,10 +375,12 @@ function App() {
     setBuildingHp((current) => current[id] === hp ? current : { ...current, [id]: hp })
   }, [])
 
-  const handleEnemyDefeated = useCallback((reward: number) => {
+  const handleEnemyDefeated = useCallback((reward: number, isBoss: boolean) => {
+    if (phase === '밤') nightRewardRef.current += reward
+    if (isBoss) completeDailyGoal('boss')
     setGold((current) => current + reward)
     setKills((current) => current + 1)
-  }, [])
+  }, [phase, completeDailyGoal])
 
   function triggerEmergencySkill(id: 'flare' | 'shockwave' | 'medkit') {
     if (phase !== '밤' || gameOver) { setNotice('긴급 스킬은 밤 전투 중에만 사용할 수 있습니다.'); return }
@@ -425,8 +450,9 @@ function App() {
     }
     setPlaced((current) => ({ ...current, [`${selected.id}-${x}-${y}`]: { item: selected, x, y } }))
     setGold((value) => value - selected.cost)
+    completeDailyGoal('turret')
     setNotice(`${selected.name}을(를) 포탑 슬롯에 설치했습니다.`)
-  }, [canPrepare, gold, placed, selected])
+  }, [canPrepare, gold, placed, selected, completeDailyGoal])
 
   function buySupplyUpgrade(track: 'discount' | 'yield') {
     if (!canPrepare) { setNotice('밤에는 보급소 강화를 할 수 없습니다.'); return }
@@ -489,6 +515,7 @@ function App() {
       </section>
 
       <p className="notice">{notice}</p>
+      {activeGoal && <section className={`daily-goal ${isGoalDone ? 'done' : ''}`}><span>{isGoalDone ? '✓' : '◎'}</span><div><b>DAY {day} 목표 · {activeGoal.label}</b><small>{isGoalDone ? `완료 · 코인 +${activeGoal.reward}` : activeGoal.detail}</small></div></section>}
 
       {basePanelOpen && <>
         <nav className="tabs" aria-label="기지 운영 메뉴">
@@ -530,7 +557,7 @@ function App() {
         {modal.item.id === 'supply' ? <div className="supply-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 수리</button><button onClick={() => buySupplyUpgrade('discount')} disabled={!canPrepare}>🪙 비용 절감 Lv.{supplyDiscountLevel}<small>다음 {Math.ceil(55 * 1.25 ** supplyDiscountLevel)}</small></button><button onClick={() => buySupplyUpgrade('yield')} disabled={!canPrepare}>🪙 생산량 증가 Lv.{supplyYieldLevel}<small>다음 {Math.ceil(55 * 1.25 ** supplyYieldLevel)}</small></button></div> : <div className="building-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 수리</button><button onClick={upgradeBuilding} disabled={!canPrepare}>🪙 다음 레벨 {Math.ceil(modal.item.cost * 0.55 * 1.18 ** ((buildingLevels[modal.id] ?? 1) - 1))}</button></div>}
         {modal.item.id === 'training' && <div className="research-list">{upgrades.map((upgrade) => <article key={upgrade.id} className={purchased.includes(upgrade.id) ? 'done' : ''}><div><b>{upgrade.name}</b><span>{upgrade.text}</span></div><button disabled={purchased.includes(upgrade.id) || !canPrepare} onClick={() => buyUpgrade(upgrade.id, upgrade.cost)}>{purchased.includes(upgrade.id) ? '완료' : `🪙 ${upgrade.cost}`}</button></article>)}</div>}
       </section></div>}
-      {nightReport && <div className="modal-backdrop night-report"><section className="research-modal"><span className="modal-icon">🌅</span><p className="eyebrow">DAY {String(nightReport.day).padStart(2, '0')} NIGHT REPORT</p><h1>생존 성공</h1><p className="modal-description">이번 밤 처치: <b>{nightReport.kills}마리</b><br />다음 낮에 방어선을 정비하세요.</p><button className="report-close" onClick={() => setNightReport(null)}>계속하기</button></section></div>}
+      {nightReport && <div className="modal-backdrop night-report"><section className="research-modal"><span className="modal-icon">🌅</span><p className="eyebrow">DAY {String(nightReport.day).padStart(2, '0')} NIGHT REPORT</p><h1>생존 성공</h1><p className="modal-description">이번 밤 처치: <b>{nightReport.kills}마리</b> · 전투 보상: <b>🪙 {nightReport.reward}</b><br />파괴된 시설/유닛: <b>{nightReport.losses}</b><br /><b>추천:</b> {nightReport.tip}</p><button className="report-close" onClick={() => setNightReport(null)}>계속하기</button></section></div>}
       {gameOver && <div className="game-over"><div><span>☠️</span><p>최후의 거점 함락</p><h1>DAY {String(day).padStart(2, '0')}</h1><small>처치 {kills}마리 · 최고 기록 DAY {Math.max(highScore, day)}</small><button onClick={() => { window.localStorage.removeItem(SAVE_KEY); window.location.reload() }}>다시 생존하기</button></div></div>}
       {dragging && dragCursor && <span className="drag-ghost" style={{ left: dragCursor.x, top: dragCursor.y }}>{dragging.icon}</span>}
     </main>

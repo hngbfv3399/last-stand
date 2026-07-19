@@ -43,7 +43,7 @@ type Props = {
   onEntityClick: (id: string, item: CanvasItem) => void
   onCoreClick: () => void
   onBaseDamaged: (damage: number) => void
-  onEnemyDefeated: (reward: number) => void
+  onEnemyDefeated: (reward: number, isBoss: boolean) => void
   onBuildingHpChange: (id: string, hp: number) => void
 }
 
@@ -61,10 +61,10 @@ const BUILDING_SLOTS = [
 ]
 type HealthBar = { back: Phaser.GameObjects.Rectangle; fill: Phaser.GameObjects.Rectangle; width: number }
 type EnemyRole = 'normal' | 'runner' | 'brute' | 'sapper' | 'boss'
-type ActiveEnemy = { sprite: Phaser.GameObjects.Text; detection: Phaser.GameObjects.Arc; hp: number; maxHp: number; speed: number; damage: number; reward: number; isBoss: boolean; role: EnemyRole; bar: HealthBar; assignedUnits: number; blocker: ActiveUnit | null; nextAttackAt: number }
+type ActiveEnemy = { sprite: Phaser.GameObjects.Text; roleTag: Phaser.GameObjects.Text; detection: Phaser.GameObjects.Arc; hp: number; maxHp: number; speed: number; damage: number; reward: number; isBoss: boolean; role: EnemyRole; bar: HealthBar; assignedUnits: number; blocker: ActiveUnit | null; nextAttackAt: number }
 type ActiveUnit = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Container; homeX: number; homeY: number; hp: number; maxHp: number; bar: HealthBar; damage: number; attackInterval: number; moveSpeed: number; blockCount: number; engagedEnemies: number; nextAttackAt: number; target: ActiveEnemy | null }
 type ActiveTurret = { item: CanvasItem; sprite: Phaser.GameObjects.Container; direction: Phaser.Math.Vector2; hp: number; maxHp: number; bar: HealthBar; nextAttackAt: number }
-type ActiveBuilding = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Container; hp: number; maxHp: number; bar: HealthBar }
+type ActiveBuilding = { id: string; item: CanvasItem; sprite: Phaser.GameObjects.Container; warning: Phaser.GameObjects.Text; hp: number; maxHp: number; bar: HealthBar }
 
 export function BattlefieldCanvas({ placed, selected, preview, previewCursor, phase, day, isGameOver, gameSpeed, isPaused, emergencyAction, buildingHp, trainingLevel, unitDamageMultiplier, warriorHpMultiplier, archerRangeBonus, workshopLevel, infirmaryLevel, onMapClick, onTurretSlotClick, onEntityDestroyed, onEntityClick, onCoreClick, onBaseDamaged, onEnemyDefeated, onBuildingHpChange }: Props) {
   const parent = useRef<HTMLDivElement>(null)
@@ -324,7 +324,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         this.placedObjects.push(bar.back, bar.fill)
         if (item.kind === 'unit') { const maxHp = (item.maxHp ?? 8) * (item.id === 'warrior' ? warriorHpMultiplierRef.current : 1); this.units.push({ id, item, sprite, homeX: x, homeY: y, hp: maxHp, maxHp, bar, damage: item.damage ?? 1, attackInterval: item.attackInterval ?? 600, moveSpeed: item.moveSpeed ?? .16, blockCount: item.blockCount ?? 1, engagedEnemies: 0, nextAttackAt: 0, target: null }) }
         if (item.kind === 'turret') { const direction = new Phaser.Math.Vector2(x - CENTER, y - CENTER).normalize(); this.turrets.push({ item, sprite, direction, hp: 12, maxHp: 12, bar, nextAttackAt: 0 }) }
-        if (item.kind === 'building') { const hp = buildingHpRef.current[id] ?? 100; this.buildings.push({ id, item, sprite, hp, maxHp: 100, bar }) }
+        if (item.kind === 'building') { const warning = this.add.text(0, -35, '⚠', { fontSize: '14px', color: '#ff8077' }).setOrigin(.5).setVisible(false); sprite.add(warning); const hp = buildingHpRef.current[id] ?? 100; this.buildings.push({ id, item, sprite, warning, hp, maxHp: 100, bar }) }
       }
 
       private startEnemyWaves() {
@@ -351,11 +351,13 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
               ? { icon: '🧟‍♂️', hp: .65, speed: 1.7, damage: 1, reward: 3, role: 'runner' }
               : { icon: '🧟', hp: 1, speed: 1, damage: 1, reward: 2, role: 'normal' }
           const enemy = this.add.text(x, y, profile.icon, { fontSize: '27px' }).setOrigin(.5)
+          const roleName = ({ normal: '일반', runner: '돌진', brute: '파괴', sapper: '공병', boss: '보스' } as const)[profile.role]
+          const roleTag = this.add.text(x, y + 17, roleName, { fontFamily: 'sans-serif', fontSize: '7px', color: profile.role === 'boss' ? '#ffd37f' : '#f3c6bb', backgroundColor: '#271d27bb', padding: { x: 3, y: 1 } }).setOrigin(.5)
           const detection = this.add.circle(x, y, 105, 0xef7777, .035).setStrokeStyle(1, 0xef7777, .35)
           const baseDamage = 1 + Math.floor((level - 1) / 3)
           const maxHp = (2 + level * 2) * profile.hp
           const bar = this.createHealthBar(x, y - 22, forced === 'boss' ? 52 : 30)
-          const activeEnemy: ActiveEnemy = { sprite: enemy, detection, hp: maxHp, maxHp, speed: (.048 + Math.min(level, 15) * .003) * profile.speed, damage: baseDamage * profile.damage, reward: profile.reward, isBoss: forced === 'boss', role: profile.role, bar, assignedUnits: 0, blocker: null, nextAttackAt: 0 }
+          const activeEnemy: ActiveEnemy = { sprite: enemy, detection, hp: maxHp, maxHp, speed: (.048 + Math.min(level, 15) * .003) * profile.speed, damage: baseDamage * profile.damage, reward: profile.reward, isBoss: forced === 'boss', role: profile.role, roleTag, bar, assignedUnits: 0, blocker: null, nextAttackAt: 0 }
           this.enemies.push(activeEnemy)
           if (activeEnemy.isBoss) this.showBossBar(activeEnemy)
           // Movement is controlled by updateEnemy so target priorities can change in real time.
@@ -378,6 +380,7 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         this.enemies.forEach((enemy) => {
           enemy.sprite.destroy()
           enemy.detection.destroy()
+          enemy.roleTag.destroy()
           enemy.bar.back.destroy()
           enemy.bar.fill.destroy()
         })
@@ -529,13 +532,14 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         })
         this.units.forEach((unit) => this.updateHealthBar(unit.bar, unit.sprite.x, unit.sprite.y - 34, unit.hp, unit.maxHp))
         this.turrets.forEach((turret) => this.updateHealthBar(turret.bar, turret.sprite.x, turret.sprite.y - 34, turret.hp, turret.maxHp))
-        this.buildings.forEach((building) => this.updateHealthBar(building.bar, building.sprite.x, building.sprite.y - 34, building.hp, building.maxHp))
+        this.buildings.forEach((building) => { this.updateHealthBar(building.bar, building.sprite.x, building.sprite.y - 34, building.hp, building.maxHp); const low = building.hp / building.maxHp <= .35; building.warning.setVisible(low); const tile = building.sprite.list[0] as Phaser.GameObjects.Rectangle; tile.setStrokeStyle(low ? 2 : 1, low ? 0xff6f68 : 0xe6d689, .9) })
         this.enemies.forEach((enemy) => this.updateEnemy(enemy, time, delta))
         this.updateBossBar()
       }
 
       private updateEnemy(enemy: ActiveEnemy, time: number, delta: number) {
         enemy.detection.setPosition(enemy.sprite.x, enemy.sprite.y)
+        enemy.roleTag.setPosition(enemy.sprite.x, enemy.sprite.y + 17)
         this.updateHealthBar(enemy.bar, enemy.sprite.x, enemy.sprite.y - 22, enemy.hp, enemy.maxHp)
         const detectionRadius = 105
         const unitTarget = this.units
@@ -624,10 +628,11 @@ export function BattlefieldCanvas({ placed, selected, preview, previewCursor, ph
         this.tweens.add({ targets: rewardText, y: rewardText.y - 24, alpha: 0, duration: 650, onComplete: () => rewardText.destroy() })
         enemy.sprite.destroy()
         enemy.detection.destroy()
+        enemy.roleTag.destroy()
         enemy.bar.back.destroy()
         enemy.bar.fill.destroy()
         if (enemy.isBoss) { this.bossBar?.back.destroy(); this.bossBar?.fill.destroy(); this.bossLabel?.destroy(); this.boss = undefined; this.bossBar = undefined; this.bossLabel = undefined }
-        onEnemyDefeatedRef.current(enemy.reward)
+        onEnemyDefeatedRef.current(enemy.reward, enemy.isBoss)
       }
     }
 
