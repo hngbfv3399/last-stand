@@ -394,15 +394,17 @@ function App() {
     setTutorialStep(3)
   }
 
+  const getBaseRepairCost = () => Math.max(1, Math.ceil((baseMaxHp - baseHp) / 20))
+
   function repairBase() {
-    const cost = 2
-    if (baseHp >= 100) { setNotice('본진 체력이 이미 최대입니다.'); return }
+    if (baseHp >= baseMaxHp) { setNotice('본진 체력이 이미 최대입니다.'); return }
     if (phase === '밤' && emergencyRepairDay === day) { setNotice('이번 밤의 긴급 수리는 이미 사용했습니다.'); return }
-    if (steelBars < cost) { setNotice('본진 수리에 필요한 철근이 부족합니다.'); return }
+    const cost = getBaseRepairCost()
+    if (steelBars < cost) { setNotice(`본진 수리에 철근 ${cost}개가 필요합니다.`); return }
     setSteelBars((current) => current - cost)
-    setBaseHp((current) => Math.min(baseMaxHp, current + 15))
+    setBaseHp(baseMaxHp)
     if (phase === '밤') setEmergencyRepairDay(day)
-    setNotice(phase === '밤' ? '긴급 수리 완료: 본진 체력 +15' : '본진 수리 완료: 체력 +15')
+    setNotice(phase === '밤' ? `긴급 수리 완료: 철근 ${cost}개로 본진을 완전히 수리했습니다.` : `본진 완전 수리 완료: 철근 ${cost}개 사용`)
   }
 
   function upgradeBuilding() {
@@ -534,7 +536,7 @@ function App() {
         </nav>
 
         <section className="build-panel">
-          {tab === 'resource' && <div className="upgrade-guide"><span>🏕️</span><div><b>기지 자원 비축</b><p>코인 {storedGold} · 철근 {storedSteelBars}</p></div><button onClick={collectBaseResources}>자원 회수</button><button onClick={repairBase} disabled={baseHp >= baseMaxHp || (phase === '밤' && emergencyRepairDay === day)}>🔩 2 수리</button></div>}
+          {tab === 'resource' && <div className="upgrade-guide"><span>🏕️</span><div><b>기지 자원 비축</b><p>코인 {storedGold} · 철근 {storedSteelBars}<br />결손 체력 20당 철근 1개</p></div><button onClick={collectBaseResources}>자원 회수</button><button onClick={repairBase} disabled={baseHp >= baseMaxHp || (phase === '밤' && emergencyRepairDay === day)}>🔩 {getBaseRepairCost()} 완전 수리</button></div>}
           {tab === 'unit' && tabItems.map((item) => (
             <button key={item.id} onClick={() => startUnitProduction(item)} disabled={!canPrepare} className="build-card">
               <span className="card-icon">{item.icon}</span><span className="card-copy"><b>{item.name}</b><small>{item.id === 'warrior' ? '4초 후 2명 생성' : '5초 후 1명 생성'}</small></span><span className="cost">🪙 {getUnitCost(item)}</span>
@@ -563,7 +565,7 @@ function App() {
 
       {modal && <div className="modal-backdrop" onClick={() => setModal(null)}><section className="research-modal" onClick={(event) => event.stopPropagation()}>
         <button className="close" onClick={() => setModal(null)}>×</button><span className="modal-icon">{modal.item.icon}</span><p className="eyebrow">LV. {buildingLevels[modal.id] ?? 1} · 체력 {buildingHp[modal.id] ?? 100}/100</p><h1>{modal.item.name}</h1><p className="modal-description">{modal.item.sub}<br /><b>현재: {getBuildingEffectText(modal.item, buildingLevels[modal.id] ?? 1)}</b>{modal.item.id !== 'supply' && <><br /><b className="upgrade-preview">다음: {getBuildingEffectText(modal.item, (buildingLevels[modal.id] ?? 1) + 1)}</b></>}</p>
-        {modal.item.id === 'supply' ? <div className="supply-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 수리</button><button onClick={() => buySupplyUpgrade('discount')} disabled={!canPrepare}>🪙 비용 절감 Lv.{supplyDiscountLevel}<small>{getSupplyPreview('discount')}<br />비용 {Math.ceil(55 * 1.25 ** supplyDiscountLevel)}</small></button><button onClick={() => buySupplyUpgrade('yield')} disabled={!canPrepare}>🪙 생산량 증가 Lv.{supplyYieldLevel}<small>{getSupplyPreview('yield')}<br />비용 {Math.ceil(55 * 1.25 ** supplyYieldLevel)}</small></button></div> : <div className="building-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 수리</button><button onClick={upgradeBuilding} disabled={!canPrepare}>🪙 다음 레벨 {Math.ceil(modal.item.cost * 0.55 * 1.18 ** ((buildingLevels[modal.id] ?? 1) - 1))}</button></div>}
+        {modal.item.id === 'supply' ? <div className="supply-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 완전 수리</button><button onClick={() => buySupplyUpgrade('discount')} disabled={!canPrepare}>🪙 비용 절감 Lv.{supplyDiscountLevel}<small>{getSupplyPreview('discount')}<br />비용 {Math.ceil(55 * 1.25 ** supplyDiscountLevel)}</small></button><button onClick={() => buySupplyUpgrade('yield')} disabled={!canPrepare}>🪙 생산량 증가 Lv.{supplyYieldLevel}<small>{getSupplyPreview('yield')}<br />비용 {Math.ceil(55 * 1.25 ** supplyYieldLevel)}</small></button></div> : <div className="building-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 완전 수리</button><button onClick={upgradeBuilding} disabled={!canPrepare}>🪙 다음 레벨 {Math.ceil(modal.item.cost * 0.55 * 1.18 ** ((buildingLevels[modal.id] ?? 1) - 1))}</button></div>}
         {modal.item.id === 'training' && <div className="research-list">{upgrades.map((upgrade) => <article key={upgrade.id} className={purchased.includes(upgrade.id) ? 'done' : ''}><div><b>{upgrade.name}</b><span>{upgrade.text}</span></div><button disabled={purchased.includes(upgrade.id) || !canPrepare} onClick={() => buyUpgrade(upgrade.id, upgrade.cost)}>{purchased.includes(upgrade.id) ? '완료' : `🪙 ${upgrade.cost}`}</button></article>)}</div>}
       </section></div>}
       {nightReport && <div className="modal-backdrop night-report"><section className="research-modal"><span className="modal-icon">🌅</span><p className="eyebrow">DAY {String(nightReport.day).padStart(2, '0')} NIGHT REPORT</p><h1>생존 성공</h1><p className="modal-description">이번 밤 처치: <b>{nightReport.kills}마리</b> · 전투 보상: <b>🪙 {nightReport.reward}</b><br />파괴된 시설/유닛: <b>{nightReport.losses}</b><br /><b>추천:</b> {nightReport.tip}</p><button className="report-close" onClick={() => setNightReport(null)}>계속하기</button></section></div>}
