@@ -476,10 +476,23 @@ function App() {
   }
 
   const getBuildingEffectText = (item: Item, level: number) => {
-    if (item.id === 'training') return '유닛 공격력 + ' + (level - 1) * 5 + '%'
-    if (item.id === 'workshop') return '포탑 피해 + ' + (level - 1) * 25 + '% · 덫 재장전 -' + (level - 1) * 90 + 'ms'
-    if (item.id === 'infirmary') return '낮 전환 시 유닛 체력 + ' + (2 + level * 2)
-    return '고용 비용 -' + Math.min(25, supplyDiscountLevel * 5) + '% · 보급 생산 + ' + supplyYieldLevel + '/4초'
+    if (item.id === 'training') return `유닛 공격력 +${(level - 1) * 5}%`
+    if (item.id === 'workshop') return `포탑 피해 +${(level - 1) * 25}% · 덫 재장전 -${(level - 1) * 90}ms`
+    if (item.id === 'infirmary') return `낮 전환 시 유닛 체력 +${2 + level * 2}`
+    return `고용 비용 -${Math.min(25, supplyDiscountLevel * 5)}% · 보급 생산 +${supplyYieldLevel}/4초`
+  }
+
+  const getBaseUpgradePreview = (id: string, level: number) => {
+    if (id === 'economy') return `골드 +${(level * .25).toFixed(2)}/초 → +${((level + 1) * .25).toFixed(2)}/초`
+    if (id === 'fortify') return `본진 최대 체력 ${100 + level * 20} → ${100 + (level + 1) * 20}`
+    return `대기열 ${8 + level * 2} → ${10 + level * 2} · 생산 시간 -${level * 10}% → -${Math.min(40, (level + 1) * 10)}%`
+  }
+
+  const getSupplyPreview = (track: 'discount' | 'yield') => {
+    const level = supplyUpgrades[track]
+    return track === 'discount'
+      ? `고용 비용 -${Math.min(25, level * 5)}% → -${Math.min(25, (level + 1) * 5)}%`
+      : `보급 생산 +${level}/4초 → +${level + 1}/4초`
   }
 
   function buyUpgrade(id: string, cost: number) {
@@ -536,7 +549,7 @@ function App() {
               <span className="card-icon">{item.icon}</span><span className="card-copy"><b>{item.name}</b><small>{item.sub}</small></span><span className="cost">🪙 {item.cost}</span>
             </button>
           ))}
-          {tab === 'upgrade' && BASE_UPGRADES.map((upgrade) => { const level = baseUpgrades[upgrade.id] ?? 0; const cost = Math.ceil(upgrade.baseCost * 1.22 ** level); return <button key={upgrade.id} onClick={() => buyBaseUpgrade(upgrade.id, upgrade.baseCost)} disabled={!canPrepare} className="build-card"><span className="card-icon">{upgrade.icon}</span><span className="card-copy"><b>{upgrade.name} Lv.{level}</b><small>{upgrade.text}</small></span><span className="cost">🪙 {cost}</span></button> })}
+          {tab === 'upgrade' && BASE_UPGRADES.map((upgrade) => { const level = baseUpgrades[upgrade.id] ?? 0; const cost = Math.ceil(upgrade.baseCost * 1.22 ** level); return <button key={upgrade.id} onClick={() => buyBaseUpgrade(upgrade.id, upgrade.baseCost)} disabled={!canPrepare} className="build-card"><span className="card-icon">{upgrade.icon}</span><span className="card-copy"><b>{upgrade.name} Lv.{level}</b><small>{upgrade.text}<br /><b className="upgrade-preview">{getBaseUpgradePreview(upgrade.id, level)}</b></small></span><span className="cost">🪙 {cost}</span></button> })}
           {tab === 'building' && tabItems.map((item) => { const installed = Object.values(placed).some((entity) => entity.item.id === item.id); return (
             <button key={item.id} onPointerDown={(event) => beginDrag(event, item)} disabled={!canPrepare || installed} className={`build-card ${selected?.id === item.id ? 'selected' : ''} ${installed ? 'installed' : 'rebuild'}`}>
               <span className="card-icon">{item.icon}</span><span className="card-copy"><b>{installed ? item.name : `${item.name} 재건`}</b><small>{installed ? '설치 완료 · 필드에서 관리' : `${item.sub} · 빈 황금 슬롯에 드래그`}</small></span><span className="cost">{installed ? '설치됨' : `🪙 ${item.cost}`}</span>
@@ -553,8 +566,8 @@ function App() {
       {tutorialStep < 3 && !gameOver && <div className="modal-backdrop tutorial"><section className="research-modal"><span className="modal-icon">{['🏕️', '⚔️', '🌙'][tutorialStep]}</span><p className="eyebrow">최후의 생존자 · {tutorialStep + 1}/3</p><h1>{['낮에는 방어선을 준비하세요', '유닛과 포탑으로 길을 막으세요', '밤에는 한 번의 선택이 중요합니다'][tutorialStep]}</h1><p className="modal-description">{['기지에서 생성된 코인과 철근을 회수하세요. 철근은 수리와 긴급 스킬에만 씁니다.', '검사·궁수는 생산 대기열에 넣고, 포탑은 본진 사방의 파란 슬롯에 설치합니다.', '밤에는 적이 몰려옵니다. 조명탄·충격파·응급치료는 각각 밤에 한 번만 쓸 수 있습니다.'][tutorialStep]}</p><div className="tutorial-actions"><button onClick={finishTutorial}>건너뛰기</button><button onClick={() => tutorialStep === 2 ? finishTutorial() : setTutorialStep((current) => current + 1)}>{tutorialStep === 2 ? '생존 시작' : '다음'}</button></div></section></div>}
 
       {modal && <div className="modal-backdrop" onClick={() => setModal(null)}><section className="research-modal" onClick={(event) => event.stopPropagation()}>
-        <button className="close" onClick={() => setModal(null)}>×</button><span className="modal-icon">{modal.item.icon}</span><p className="eyebrow">LV. {buildingLevels[modal.id] ?? 1} · 체력 {buildingHp[modal.id] ?? 100}/100</p><h1>{modal.item.name}</h1><p className="modal-description">{modal.item.sub}<br /><b>현재 효과: {getBuildingEffectText(modal.item, buildingLevels[modal.id] ?? 1)}</b></p>
-        {modal.item.id === 'supply' ? <div className="supply-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 수리</button><button onClick={() => buySupplyUpgrade('discount')} disabled={!canPrepare}>🪙 비용 절감 Lv.{supplyDiscountLevel}<small>다음 {Math.ceil(55 * 1.25 ** supplyDiscountLevel)}</small></button><button onClick={() => buySupplyUpgrade('yield')} disabled={!canPrepare}>🪙 생산량 증가 Lv.{supplyYieldLevel}<small>다음 {Math.ceil(55 * 1.25 ** supplyYieldLevel)}</small></button></div> : <div className="building-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 수리</button><button onClick={upgradeBuilding} disabled={!canPrepare}>🪙 다음 레벨 {Math.ceil(modal.item.cost * 0.55 * 1.18 ** ((buildingLevels[modal.id] ?? 1) - 1))}</button></div>}
+        <button className="close" onClick={() => setModal(null)}>×</button><span className="modal-icon">{modal.item.icon}</span><p className="eyebrow">LV. {buildingLevels[modal.id] ?? 1} · 체력 {buildingHp[modal.id] ?? 100}/100</p><h1>{modal.item.name}</h1><p className="modal-description">{modal.item.sub}<br /><b>현재: {getBuildingEffectText(modal.item, buildingLevels[modal.id] ?? 1)}</b>{modal.item.id !== 'supply' && <><br /><b className="upgrade-preview">다음: {getBuildingEffectText(modal.item, (buildingLevels[modal.id] ?? 1) + 1)}</b></>}</p>
+        {modal.item.id === 'supply' ? <div className="supply-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 수리</button><button onClick={() => buySupplyUpgrade('discount')} disabled={!canPrepare}>🪙 비용 절감 Lv.{supplyDiscountLevel}<small>{getSupplyPreview('discount')}<br />비용 {Math.ceil(55 * 1.25 ** supplyDiscountLevel)}</small></button><button onClick={() => buySupplyUpgrade('yield')} disabled={!canPrepare}>🪙 생산량 증가 Lv.{supplyYieldLevel}<small>{getSupplyPreview('yield')}<br />비용 {Math.ceil(55 * 1.25 ** supplyYieldLevel)}</small></button></div> : <div className="building-actions"><button onClick={repairBuilding} disabled={!canPrepare || (buildingHp[modal.id] ?? 100) >= 100}>🔩 {getRepairCost(modal.id)} 수리</button><button onClick={upgradeBuilding} disabled={!canPrepare}>🪙 다음 레벨 {Math.ceil(modal.item.cost * 0.55 * 1.18 ** ((buildingLevels[modal.id] ?? 1) - 1))}</button></div>}
         {modal.item.id === 'training' && <div className="research-list">{upgrades.map((upgrade) => <article key={upgrade.id} className={purchased.includes(upgrade.id) ? 'done' : ''}><div><b>{upgrade.name}</b><span>{upgrade.text}</span></div><button disabled={purchased.includes(upgrade.id) || !canPrepare} onClick={() => buyUpgrade(upgrade.id, upgrade.cost)}>{purchased.includes(upgrade.id) ? '완료' : `🪙 ${upgrade.cost}`}</button></article>)}</div>}
       </section></div>}
       {nightReport && <div className="modal-backdrop night-report"><section className="research-modal"><span className="modal-icon">🌅</span><p className="eyebrow">DAY {String(nightReport.day).padStart(2, '0')} NIGHT REPORT</p><h1>생존 성공</h1><p className="modal-description">이번 밤 처치: <b>{nightReport.kills}마리</b> · 전투 보상: <b>🪙 {nightReport.reward}</b><br />파괴된 시설/유닛: <b>{nightReport.losses}</b><br /><b>추천:</b> {nightReport.tip}</p><button className="report-close" onClick={() => setNightReport(null)}>계속하기</button></section></div>}
