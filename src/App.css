@@ -67,3 +67,8 @@
 @media (max-width: 370px) { .hud { grid-template-columns: 54px 1fr 96px; padding-inline: 9px; }.resources { gap: 3px; padding-inline: 7px; }.resources span { padding: 3px 4px; }.resources small { font-size: 8px; }.build-card { flex-basis: 142px; } }
 .unit-tactics { flex: 0 0 178px; padding: 8px; border: 1px solid #77b8b066; border-radius: 13px; background: linear-gradient(145deg,#1e4147,#172b36); color:#d5ead8; display:grid; grid-template-columns: 1fr repeat(3, .72fr); gap:4px; align-content:start; }
 .unit-tactics b { grid-column:1/-1; color:#ffe59a; font-size:11px; }.unit-tactics small { align-self:center; font-size:9px; color:#a9c4b6; }.unit-tactics button { border:1px solid #ffffff20; border-radius:6px; background:#112631; color:#afc9bd; padding:4px 2px; font-size:9px; }.unit-tactics button.active { border-color:#f0d372; color:#fff0b7; background:#62512d; }
+
+/* Keep multi-line upgrade previews inside compact cards. */
+.build-card { overflow: hidden; }
+.card-copy > b { display: block; font: 15px 'Jua', sans-serif; }
+.card-copy small .upgrade-preview { display: block; margin-top: 3px; font: 9px/1.25 sans-serif; letter-spacing: 0; white-space: normal; }
