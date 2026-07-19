@@ -1,0 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Jua&display=swap');
+
+:root { font-family: 'Gowun Dodum', system-ui, sans-serif; color: #f7f1d6; background: #0b1420; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #0b1420; }
+button { font: inherit; }
