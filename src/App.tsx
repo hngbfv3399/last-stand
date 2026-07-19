@@ -53,40 +53,47 @@ const BUILDING_SLOTS = [
   { x: 4180, y: 4180, label: '남동' }, { x: 3820, y: 4180, label: '남서' },
 ]
 
+const SAVE_KEY = 'last-stand-save-v1'
+const DEFAULT_PLACED: Record<string, { item: Item; x: number; y: number }> = {
+  'training-initial': { item: items[4], x: 3820, y: 3820 }, 'workshop-initial': { item: items[5], x: 4180, y: 3820 },
+  'infirmary-initial': { item: items[6], x: 3820, y: 4180 }, 'supply-initial': { item: items[7], x: 4180, y: 4180 },
+}
+type SaveData = Partial<{ placed: Record<string, { item: Item; x: number; y: number }>; gold: number; steelBars: number; storedGold: number; storedSteelBars: number; phase: '낮' | '황혼' | '밤'; day: number; timeLeft: number; baseHp: number; productionQueue: Production[]; buildingLevels: Record<string, number>; baseUpgrades: Record<string, number>; supplyUpgrades: Record<'discount' | 'yield', number>; buildingHp: Record<string, number>; purchased: string[]; kills: number; emergencyRepairDay: number | null; gameSpeed: 1 | 2 }>
+function loadSave(): SaveData {
+  try { const value = JSON.parse(window.localStorage.getItem(SAVE_KEY) ?? '{}'); return value && typeof value === 'object' ? value : {} } catch { return {} }
+}
+
 function App() {
+  const [saved] = useState<SaveData>(loadSave)
   const [tab, setTab] = useState<Tab>('unit')
   const [selected, setSelected] = useState<Item | null>(null)
   const [dragging, setDragging] = useState<Item | null>(null)
   const [dragCursor, setDragCursor] = useState<{ x: number; y: number } | null>(null)
   const draggingItemRef = useRef<Item | null>(null)
-  const [placed, setPlaced] = useState<Record<string, { item: Item; x: number; y: number }>>({
-    'training-initial': { item: items[4], x: 3820, y: 3820 },
-    'workshop-initial': { item: items[5], x: 4180, y: 3820 },
-    'infirmary-initial': { item: items[6], x: 3820, y: 4180 },
-    'supply-initial': { item: items[7], x: 4180, y: 4180 },
-  })
-  const [gold, setGold] = useState(168)
-  const [steelBars, setSteelBars] = useState(0)
-  const [storedGold, setStoredGold] = useState(0)
-  const [storedSteelBars, setStoredSteelBars] = useState(0)
-  const [phase, setPhase] = useState<'낮' | '황혼' | '밤'>('낮')
-  const [day, setDay] = useState(1)
-  const [timeLeft, setTimeLeft] = useState<number>(PHASE_SECONDS.낮)
-  const [baseHp, setBaseHp] = useState(100)
+  const [placed, setPlaced] = useState<Record<string, { item: Item; x: number; y: number }>>(saved.placed ?? DEFAULT_PLACED)
+  const [gold, setGold] = useState(saved.gold ?? 168)
+  const [steelBars, setSteelBars] = useState(saved.steelBars ?? 0)
+  const [storedGold, setStoredGold] = useState(saved.storedGold ?? 0)
+  const [storedSteelBars, setStoredSteelBars] = useState(saved.storedSteelBars ?? 0)
+  const [phase, setPhase] = useState<'낮' | '황혼' | '밤'>(saved.phase ?? '낮')
+  const [day, setDay] = useState(saved.day ?? 1)
+  const [timeLeft, setTimeLeft] = useState<number>(saved.timeLeft ?? PHASE_SECONDS.낮)
+  const [baseHp, setBaseHp] = useState(saved.baseHp ?? 100)
   const [gameOver, setGameOver] = useState(false)
   const [basePanelOpen, setBasePanelOpen] = useState(true)
-  const [productionQueue, setProductionQueue] = useState<Production[]>([])
+  const [productionQueue, setProductionQueue] = useState<Production[]>(saved.productionQueue ?? [])
   const [modal, setModal] = useState<BuildingModal | null>(null)
-  const [buildingLevels, setBuildingLevels] = useState<Record<string, number>>({})
-  const [baseUpgrades, setBaseUpgrades] = useState<Record<string, number>>({})
-  const [supplyUpgrades, setSupplyUpgrades] = useState<Record<'discount' | 'yield', number>>({ discount: 0, yield: 0 })
-  const [buildingHp, setBuildingHp] = useState<Record<string, number>>({})
-  const [purchased, setPurchased] = useState<string[]>([])
-  const [kills, setKills] = useState(0)
-  const [emergencyRepairDay, setEmergencyRepairDay] = useState<number | null>(null)
+  const [buildingLevels, setBuildingLevels] = useState<Record<string, number>>(saved.buildingLevels ?? {})
+  const [baseUpgrades, setBaseUpgrades] = useState<Record<string, number>>(saved.baseUpgrades ?? {})
+  const [supplyUpgrades, setSupplyUpgrades] = useState<Record<'discount' | 'yield', number>>(saved.supplyUpgrades ?? { discount: 0, yield: 0 })
+  const [buildingHp, setBuildingHp] = useState<Record<string, number>>(saved.buildingHp ?? {})
+  const [purchased, setPurchased] = useState<string[]>(saved.purchased ?? [])
+  const [kills, setKills] = useState(saved.kills ?? 0)
+  const [emergencyRepairDay, setEmergencyRepairDay] = useState<number | null>(saved.emergencyRepairDay ?? null)
   const [notice, setNotice] = useState('낮 동안 기지를 보강하세요.')
-  const [gameSpeed, setGameSpeed] = useState<1 | 2>(1)
+  const [gameSpeed, setGameSpeed] = useState<1 | 2>(saved.gameSpeed ?? 1)
   const [isPaused, setIsPaused] = useState(false)
+  const [showEmergencyGuide, setShowEmergencyGuide] = useState(false)
   const [emergencyAction, setEmergencyAction] = useState<EmergencyAction>(null)
   const [emergencyUses, setEmergencyUses] = useState<Record<string, number>>({})
   const [tutorialStep, setTutorialStep] = useState(() => Number(window.localStorage.getItem('last-stand-tutorial-step') ?? 0))
@@ -117,6 +124,10 @@ function App() {
   const supplyDiscountLevel = supplyUpgrades.discount
   const supplyYieldLevel = supplyUpgrades.yield
   const getUnitCost = (item: Item) => Math.ceil(item.cost * (1 - Math.min(.25, supplyDiscountLevel * .05)))
+
+  useEffect(() => {
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, gameSpeed }))
+  }, [placed, gold, steelBars, storedGold, storedSteelBars, phase, day, timeLeft, baseHp, productionQueue, buildingLevels, baseUpgrades, supplyUpgrades, buildingHp, purchased, kills, emergencyRepairDay, gameSpeed])
 
   useEffect(() => {
     let seconds = 0
@@ -500,7 +511,9 @@ function App() {
         </section>
       </>}
 
-      {phase === '밤' && !gameOver && <section className="emergency-skills"><b>긴급 대응</b><button disabled={Boolean(emergencyUses.flare)} onClick={() => triggerEmergencySkill('flare')}>🔦 조명탄<small>🔩 1</small></button><button disabled={Boolean(emergencyUses.shockwave)} onClick={() => triggerEmergencySkill('shockwave')}>🛡 충격파<small>🔩 1</small></button><button disabled={Boolean(emergencyUses.medkit)} onClick={() => triggerEmergencySkill('medkit')}>⛑ 응급치료<small>🔩 2</small></button></section>}
+      {phase === '밤' && !gameOver && <section className="emergency-skills"><b>긴급 대응</b><button className="emergency-help" onClick={() => setShowEmergencyGuide(true)}>?</button><button disabled={Boolean(emergencyUses.flare)} onClick={() => triggerEmergencySkill('flare')}>🔦 조명탄<small>🔩 1</small></button><button disabled={Boolean(emergencyUses.shockwave)} onClick={() => triggerEmergencySkill('shockwave')}>🛡 충격파<small>🔩 1</small></button><button disabled={Boolean(emergencyUses.medkit)} onClick={() => triggerEmergencySkill('medkit')}>⛑ 응급치료<small>🔩 2</small></button></section>}
+
+      {showEmergencyGuide && <div className="modal-backdrop" onClick={() => setShowEmergencyGuide(false)}><section className="research-modal" onClick={(event) => event.stopPropagation()}><button className="close" onClick={() => setShowEmergencyGuide(false)}>×</button><span className="modal-icon">🚨</span><p className="eyebrow">밤 전투 전용</p><h1>긴급 대응</h1><p className="modal-description">각 스킬은 <b>밤마다 1회</b>만 사용할 수 있고, 철근을 소비합니다.</p><div className="research-list"><article><div><b>🔦 조명탄 · 철근 1</b><span>필드의 모든 적에게 3 피해를 줍니다. 다수의 일반 적을 정리할 때 사용하세요.</span></div></article><article><div><b>🛡 충격파 · 철근 1</b><span>모든 적을 본진 바깥으로 밀어내고 공격 타이밍을 늦춥니다. 방어선이 뚫렸을 때 유용합니다.</span></div></article><article><div><b>⛑ 응급치료 · 철근 2</b><span>모든 생존 유닛의 체력을 7 회복합니다. 전방 검사가 위급할 때 사용하세요.</span></div></article></div></section></div>}
 
       {tutorialStep < 3 && !gameOver && <div className="modal-backdrop tutorial"><section className="research-modal"><span className="modal-icon">{['🏕️', '⚔️', '🌙'][tutorialStep]}</span><p className="eyebrow">최후의 생존자 · {tutorialStep + 1}/3</p><h1>{['낮에는 방어선을 준비하세요', '유닛과 포탑으로 길을 막으세요', '밤에는 한 번의 선택이 중요합니다'][tutorialStep]}</h1><p className="modal-description">{['기지에서 생성된 코인과 철근을 회수하세요. 철근은 수리와 긴급 스킬에만 씁니다.', '검사·궁수는 생산 대기열에 넣고, 포탑은 본진 사방의 파란 슬롯에 설치합니다.', '밤에는 적이 몰려옵니다. 조명탄·충격파·응급치료는 각각 밤에 한 번만 쓸 수 있습니다.'][tutorialStep]}</p><div className="tutorial-actions"><button onClick={finishTutorial}>건너뛰기</button><button onClick={() => tutorialStep === 2 ? finishTutorial() : setTutorialStep((current) => current + 1)}>{tutorialStep === 2 ? '생존 시작' : '다음'}</button></div></section></div>}
 
@@ -510,7 +523,7 @@ function App() {
         {modal.item.id === 'training' && <div className="research-list">{upgrades.map((upgrade) => <article key={upgrade.id} className={purchased.includes(upgrade.id) ? 'done' : ''}><div><b>{upgrade.name}</b><span>{upgrade.text}</span></div><button disabled={purchased.includes(upgrade.id) || !canPrepare} onClick={() => buyUpgrade(upgrade.id, upgrade.cost)}>{purchased.includes(upgrade.id) ? '완료' : `🪙 ${upgrade.cost}`}</button></article>)}</div>}
       </section></div>}
       {nightReport && <div className="modal-backdrop night-report"><section className="research-modal"><span className="modal-icon">🌅</span><p className="eyebrow">DAY {String(nightReport.day).padStart(2, '0')} NIGHT REPORT</p><h1>생존 성공</h1><p className="modal-description">이번 밤 처치: <b>{nightReport.kills}마리</b><br />다음 낮에 방어선을 정비하세요.</p><button className="report-close" onClick={() => setNightReport(null)}>계속하기</button></section></div>}
-      {gameOver && <div className="game-over"><div><span>☠️</span><p>최후의 거점 함락</p><h1>DAY {String(day).padStart(2, '0')}</h1><small>처치 {kills}마리 · 최고 기록 DAY {Math.max(highScore, day)}</small><button onClick={() => window.location.reload()}>다시 생존하기</button></div></div>}
+      {gameOver && <div className="game-over"><div><span>☠️</span><p>최후의 거점 함락</p><h1>DAY {String(day).padStart(2, '0')}</h1><small>처치 {kills}마리 · 최고 기록 DAY {Math.max(highScore, day)}</small><button onClick={() => { window.localStorage.removeItem(SAVE_KEY); window.location.reload() }}>다시 생존하기</button></div></div>}
       {dragging && dragCursor && <span className="drag-ghost" style={{ left: dragCursor.x, top: dragCursor.y }}>{dragging.icon}</span>}
     </main>
   )
